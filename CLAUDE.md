@@ -8,6 +8,12 @@ This is a thin wrapper around the `matrix` Dart SDK that adds Sliding Sync (MSC4
 
 **Design Principle**: When implementing features, always check if the Matrix SDK already provides the functionality before writing custom code.
 
+## Commit Style
+
+Use single-line conventional commits: `type: description`
+
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
+
 ## Build & Development Commands
 
 ```bash
