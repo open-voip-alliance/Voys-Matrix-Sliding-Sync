@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^2.6.1
+  http: ^1.2.0
   matrix: ^4.1.0
   voys_matrix_sliding_sync:
     path: ../
