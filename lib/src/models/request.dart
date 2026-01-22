@@ -232,11 +232,11 @@ class SlidingSyncExtensions {
     this.presence = false,
   });
 
-  /// Enable all extensions
+  /// Enable all extensions (except E2EE which is disabled)
   factory SlidingSyncExtensions.all() {
     return SlidingSyncExtensions(
       toDevice: true,
-      e2ee: true,
+      e2ee: false,
       accountData: true,
       receipts: true,
       typing: true,
@@ -244,9 +244,13 @@ class SlidingSyncExtensions {
     );
   }
 
-  /// Enable essential extensions only
+  /// Enable essential extensions only (E2EE disabled)
   factory SlidingSyncExtensions.essential() {
-    return SlidingSyncExtensions(toDevice: true, e2ee: true, accountData: true);
+    return SlidingSyncExtensions(
+      toDevice: true,
+      e2ee: false,
+      accountData: true,
+    );
   }
 
   /// No extensions (for testing/compatibility)
