@@ -39,8 +39,6 @@ class SlidingSyncOnlyClient extends Client {
     bool? useStateAfter,
   }) async {
     // Return a minimal SyncUpdate to prevent sync without causing errors
-    return SyncUpdate(
-      nextBatch: since ?? prevBatch ?? '',
-    );
+    return SyncUpdate(nextBatch: since ?? prevBatch ?? '');
   }
 }

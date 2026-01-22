@@ -33,10 +33,7 @@ class SlidingSyncListUpdate {
   /// Operations applied
   final List<SlidingSyncOperation>? ops;
 
-  SlidingSyncListUpdate({
-    this.count,
-    this.ops,
-  });
+  SlidingSyncListUpdate({this.count, this.ops});
 }
 
 /// Update for a room
@@ -47,8 +44,5 @@ class SlidingSyncRoomUpdate {
   /// Room data
   final SlidingSyncRoomData roomData;
 
-  SlidingSyncRoomUpdate({
-    required this.roomId,
-    required this.roomData,
-  });
+  SlidingSyncRoomUpdate({required this.roomId, required this.roomData});
 }

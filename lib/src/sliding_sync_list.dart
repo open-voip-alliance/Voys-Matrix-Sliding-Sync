@@ -62,13 +62,13 @@ class SlidingSyncList {
     int batchSize = 20,
     int? maximumNumberOfRooms,
     bool includeHeroes = false,
-  })  : _syncMode = syncMode,
-        _timelineLimit = timelineLimit,
-        _requiredState = requiredState,
-        _filters = filters,
-        _batchSize = batchSize,
-        _maximumNumberOfRooms = maximumNumberOfRooms,
-        _includeHeroes = includeHeroes {
+  }) : _syncMode = syncMode,
+       _timelineLimit = timelineLimit,
+       _requiredState = requiredState,
+       _filters = filters,
+       _batchSize = batchSize,
+       _maximumNumberOfRooms = maximumNumberOfRooms,
+       _includeHeroes = includeHeroes {
     if (ranges != null) {
       _ranges = ranges;
     } else {
@@ -243,8 +243,9 @@ class SlidingSyncList {
 
       case SyncMode.growing:
         // Expanding range from 0
-        final currentEnd =
-            _ranges.isEmpty ? _batchSize - 1 : _ranges.last[1] + _batchSize;
+        final currentEnd = _ranges.isEmpty
+            ? _batchSize - 1
+            : _ranges.last[1] + _batchSize;
         var end = currentEnd;
         if (_maximumNumberOfRooms != null) {
           end = end.clamp(0, _maximumNumberOfRooms! - 1);
@@ -301,8 +302,10 @@ class SlidingSyncList {
         if (range.length == 2) {
           final start = range[0];
           final end = range[1];
-          final rangeRoomIds =
-              roomIds.sublist(i * (end - start + 1), (i + 1) * (end - start + 1));
+          final rangeRoomIds = roomIds.sublist(
+            i * (end - start + 1),
+            (i + 1) * (end - start + 1),
+          );
 
           // Ensure list is large enough
           while (_roomIds.length <= end) {

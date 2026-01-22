@@ -119,8 +119,9 @@ class SlidingRoomFilter {
       isKnocked: json['is_knocked'] as bool?,
       isDm: json['is_dm'] as bool?,
       isEncrypted: json['is_encrypted'] as bool?,
-      spaces:
-          (json['spaces'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      spaces: (json['spaces'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
       roomTypes: (json['room_types'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
@@ -129,8 +130,9 @@ class SlidingRoomFilter {
           .toList(),
       roomNameLike: json['room_name_like'] as String?,
       tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
-      notTags:
-          (json['not_tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      notTags: (json['not_tags'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
     );
   }
 }

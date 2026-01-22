@@ -13,10 +13,7 @@ class RequiredStateRequest {
   /// State events to exclude from the response (optional)
   final List<List<String>>? exclude;
 
-  RequiredStateRequest({
-    required this.include,
-    this.exclude,
-  }) {
+  RequiredStateRequest({required this.include, this.exclude}) {
     // Validate input
     if (include.length > 100) {
       throw ArgumentError('Maximum 100 state elements allowed in include list');
@@ -75,8 +72,10 @@ class RequiredStateRequest {
           .toList(),
       exclude: json['exclude'] != null
           ? (json['exclude'] as List<dynamic>)
-              .map((e) => (e as List<dynamic>).map((s) => s as String).toList())
-              .toList()
+                .map(
+                  (e) => (e as List<dynamic>).map((s) => s as String).toList(),
+                )
+                .toList()
           : null,
     );
   }

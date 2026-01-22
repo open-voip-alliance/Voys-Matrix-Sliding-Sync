@@ -60,20 +60,18 @@ class SlidingSyncListResponse {
   /// Operations to apply to the list
   final List<SlidingSyncOperation>? ops;
 
-  SlidingSyncListResponse({
-    this.count,
-    this.ops,
-  });
+  SlidingSyncListResponse({this.count, this.ops});
 
   factory SlidingSyncListResponse.fromJson(Map<String, dynamic> json) {
     return SlidingSyncListResponse(
       count: json['count'] as int?,
       ops: json['ops'] != null
           ? (json['ops'] as List<dynamic>)
-              .map(
-                (e) => SlidingSyncOperation.fromJson(e as Map<String, dynamic>),
-              )
-              .toList()
+                .map(
+                  (e) =>
+                      SlidingSyncOperation.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : null,
     );
   }
@@ -235,8 +233,8 @@ class SlidingSyncRoomData {
       heroCount: json['hero_count'] as int?,
       heroes: json['heroes'] != null
           ? (json['heroes'] as List<dynamic>)
-              .map((e) => SlidingSyncHero.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => SlidingSyncHero.fromJson(e as Map<String, dynamic>))
+                .toList()
           : null,
       bumpStamp: json['bump_stamp'] as int?,
       initial: json['initial'] as bool?,
@@ -244,37 +242,37 @@ class SlidingSyncRoomData {
       numLive: json['num_live'] as int?,
       timeline: json['timeline'] != null
           ? (json['timeline'] as List<dynamic>)
-              .map((e) => MatrixEvent.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => MatrixEvent.fromJson(e as Map<String, dynamic>))
+                .toList()
           : null,
       requiredState: json['required_state'] != null
           ? (json['required_state'] as List<dynamic>)
-              .map((e) => MatrixEvent.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => MatrixEvent.fromJson(e as Map<String, dynamic>))
+                .toList()
           : null,
       prevBatch: json['prev_batch'] as String?,
       limited: json['limited'] as bool?,
       inviteState: json['invite_state'] != null
           ? (json['invite_state'] as List<dynamic>)
-              .map(
-                (e) => StrippedStateEvent.fromJson(e as Map<String, dynamic>),
-              )
-              .toList()
+                .map(
+                  (e) => StrippedStateEvent.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : null,
       encrypted: json['encrypted'] as bool?,
       canonicalAlias: json['canonical_alias'] as String?,
       joinRule: json['join_rule'] as String?,
       knockState: json['knock_state'] != null
           ? (json['knock_state'] as List<dynamic>)
-              .map(
-                (e) => StrippedStateEvent.fromJson(e as Map<String, dynamic>),
-              )
-              .toList()
+                .map(
+                  (e) => StrippedStateEvent.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : null,
       dmTargets: json['dm_targets'] != null
           ? (json['dm_targets'] as List<dynamic>)
-              .map((e) => e as String)
-              .toList()
+                .map((e) => e as String)
+                .toList()
           : null,
       notificationCounts: json['notification_counts'] != null
           ? UnreadNotificationCounts.fromJson(
@@ -298,11 +296,7 @@ class SlidingSyncHero {
   /// Avatar URL
   final String? avatarUrl;
 
-  SlidingSyncHero({
-    required this.userId,
-    this.name,
-    this.avatarUrl,
-  });
+  SlidingSyncHero({required this.userId, this.name, this.avatarUrl});
 
   factory SlidingSyncHero.fromJson(Map<String, dynamic> json) {
     return SlidingSyncHero(
@@ -378,18 +372,15 @@ class ToDeviceExtension {
   /// To-device events
   final List<ToDeviceEvent>? events;
 
-  ToDeviceExtension({
-    this.nextBatch,
-    this.events,
-  });
+  ToDeviceExtension({this.nextBatch, this.events});
 
   factory ToDeviceExtension.fromJson(Map<String, dynamic> json) {
     return ToDeviceExtension(
       nextBatch: json['next_batch'] as String?,
       events: json['events'] != null
           ? (json['events'] as List<dynamic>)
-              .map((e) => ToDeviceEvent.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => ToDeviceEvent.fromJson(e as Map<String, dynamic>))
+                .toList()
           : null,
     );
   }
@@ -420,15 +411,16 @@ class E2EEExtension {
             )
           : null,
       deviceOneTimeKeysCount: json['device_one_time_keys_count'] != null
-          ? (json['device_one_time_keys_count'] as Map<String, dynamic>)
-              .map((key, value) => MapEntry(key, value as int))
+          ? (json['device_one_time_keys_count'] as Map<String, dynamic>).map(
+              (key, value) => MapEntry(key, value as int),
+            )
           : null,
       deviceUnusedFallbackKeyTypes:
           json['device_unused_fallback_key_types'] != null
-              ? (json['device_unused_fallback_key_types'] as List<dynamic>)
-                  .map((e) => e as String)
-                  .toList()
-              : null,
+          ? (json['device_unused_fallback_key_types'] as List<dynamic>)
+                .map((e) => e as String)
+                .toList()
+          : null,
     );
   }
 }
@@ -441,17 +433,14 @@ class AccountDataExtension {
   /// Room-specific account data
   final Map<String, List<BasicEvent>>? rooms;
 
-  AccountDataExtension({
-    this.global,
-    this.rooms,
-  });
+  AccountDataExtension({this.global, this.rooms});
 
   factory AccountDataExtension.fromJson(Map<String, dynamic> json) {
     return AccountDataExtension(
       global: json['global'] != null
           ? (json['global'] as List<dynamic>)
-              .map((e) => BasicEvent.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => BasicEvent.fromJson(e as Map<String, dynamic>))
+                .toList()
           : null,
       rooms: json['rooms'] != null
           ? (json['rooms'] as Map<String, dynamic>).map(
@@ -472,9 +461,7 @@ class ReceiptsExtension {
   /// Room receipts
   final Map<String, ReceiptContent>? rooms;
 
-  ReceiptsExtension({
-    this.rooms,
-  });
+  ReceiptsExtension({this.rooms});
 
   factory ReceiptsExtension.fromJson(Map<String, dynamic> json) {
     return ReceiptsExtension(
@@ -506,9 +493,7 @@ class TypingExtension {
   /// Rooms with typing users
   final Map<String, TypingContent>? rooms;
 
-  TypingExtension({
-    this.rooms,
-  });
+  TypingExtension({this.rooms});
 
   factory TypingExtension.fromJson(Map<String, dynamic> json) {
     return TypingExtension(
@@ -533,7 +518,8 @@ class TypingContent {
 
   factory TypingContent.fromJson(Map<String, dynamic> json) {
     return TypingContent(
-      userIds: (json['user_ids'] as List<dynamic>?)
+      userIds:
+          (json['user_ids'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           [],
@@ -546,16 +532,14 @@ class PresenceExtension {
   /// Presence events
   final List<BasicEvent>? events;
 
-  PresenceExtension({
-    this.events,
-  });
+  PresenceExtension({this.events});
 
   factory PresenceExtension.fromJson(Map<String, dynamic> json) {
     return PresenceExtension(
       events: json['events'] != null
           ? (json['events'] as List<dynamic>)
-              .map((e) => BasicEvent.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => BasicEvent.fromJson(e as Map<String, dynamic>))
+                .toList()
           : null,
     );
   }
