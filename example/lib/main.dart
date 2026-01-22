@@ -24,7 +24,7 @@ final clientProvider = FutureProvider((_) async {
       database: await sqlite.openDatabase('database.sqlite'),
     ),
     enableDehydratedDevices: false,
-    httpClient: LoggingHttpClient(),
+    httpClient: createLoggingHttpClient(),
   );
 
   // Disable background sync to prevent sync loop
