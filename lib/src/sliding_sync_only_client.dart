@@ -19,6 +19,10 @@ class SlidingSyncOnlyClient extends Client {
     super.clientName, {
     required super.database,
     super.enableDehydratedDevices,
+    super.importantStateEvents,
+    super.roomPreviewLastEvents,
+    super.sendTimelineEventTimeout,
+    super.httpClient,
   });
 
   /// Override the public sync method to prevent any sync calls.
