@@ -1,0 +1,9 @@
+name: voys_matrix_sliding_sync
+description: A sliding sync implementation for Matrix (MSC4186) that provides efficient synchronization for chat clients.
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  matrix: ^4.1.0
