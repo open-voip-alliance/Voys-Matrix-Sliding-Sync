@@ -29,11 +29,17 @@
 library voys_matrix_sliding_sync;
 
 // Core
-export 'src/sliding_sync.dart' show SlidingSync;
+export 'src/sliding_sync.dart' show SlidingSync, SlidingSyncBuilder;
 export 'src/sliding_sync_list.dart' show SlidingSyncList;
 export 'src/sliding_sync_only_client.dart' show SlidingSyncOnlyClient;
-export 'src/sync_mode.dart' show SyncMode;
+export 'src/sliding_sync_update.dart'
+    show SlidingSyncUpdate, SlidingSyncListUpdate, SlidingSyncRoomUpdate;
+export 'src/sync_mode.dart'
+    show SyncMode, SlidingSyncListLoadingState, SlidingSyncStatus;
 
 // Configuration
-export 'src/models/request.dart' show SlidingSyncExtensions;
+export 'src/models/request.dart' show SlidingSyncExtensions, RoomSubscription;
 export 'src/models/required_state.dart' show RequiredStateRequest;
+
+// Extensions
+export 'src/client_extensions.dart' show SlidingSyncClientExtensions;
