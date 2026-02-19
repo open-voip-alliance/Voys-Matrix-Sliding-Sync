@@ -12,6 +12,10 @@ final talker = Talker();
 /// [TalkerHttpLoggerSettings.printRequestData] set to false to avoid logging
 /// the unmasked body.
 class _SensitiveDataMaskingInterceptor implements InterceptorContract {
+  final bool enabled;
+
+  const _SensitiveDataMaskingInterceptor({this.enabled = true});
+
   static const _sensitiveBodyKeys = {'user', 'password', 'token'};
   static const _sensitiveHeaderKeys = {'authorization'};
 
@@ -49,7 +53,7 @@ class _SensitiveDataMaskingInterceptor implements InterceptorContract {
   }) async => response;
 
   @override
-  Future<bool> shouldInterceptRequest() async => true;
+  Future<bool> shouldInterceptRequest() async => enabled;
 
   @override
   Future<bool> shouldInterceptResponse() async => false;
@@ -77,14 +81,16 @@ class _SensitiveDataMaskingInterceptor implements InterceptorContract {
   }
 }
 
-/// Creates an HTTP client with Talker logging
-http.Client createLoggingHttpClient() {
+/// Creates an HTTP client with Talker logging.
+/// Set [enabled] to false to disable all HTTP logging.
+http.Client createLoggingHttpClient({bool enabled = false}) {
   return InterceptedClient.build(
     interceptors: [
-      _SensitiveDataMaskingInterceptor(),
+      _SensitiveDataMaskingInterceptor(enabled: enabled),
       TalkerHttpLogger(
         talker: talker,
-        settings: const TalkerHttpLoggerSettings(
+        settings: TalkerHttpLoggerSettings(
+          enabled: enabled,
           printRequestHeaders:
               false, // handled by _SensitiveDataMaskingInterceptor
           printResponseHeaders: false,
