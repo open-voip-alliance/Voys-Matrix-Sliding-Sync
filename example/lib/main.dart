@@ -833,6 +833,8 @@ class RoomPage extends StatefulWidget {
 class _RoomPageState extends State<RoomPage> {
   late final Future<Timeline> _timelineFuture;
   Timeline? _timeline;
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoadingMore = false;
 
   @override
   void initState() {
@@ -853,11 +855,31 @@ class _RoomPageState extends State<RoomPage> {
           if (mounted) setState(() {});
           return timeline;
         });
+    _scrollController.addListener(_onScroll);
     super.initState();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _isLoadingMore) return;
+    final timeline = _timeline;
+    if (timeline == null) return;
+
+    // With reverse:true the beginning of history is at maxScrollExtent.
+    final isNearTop =
+        _scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200.0;
+
+    if (isNearTop) {
+      setState(() => _isLoadingMore = true);
+      timeline.requestHistory().whenComplete(() {
+        if (mounted) setState(() => _isLoadingMore = false);
+      });
+    }
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _timeline?.cancelSubscriptions();
     super.dispose();
   }
@@ -912,15 +934,26 @@ class _RoomPageState extends State<RoomPage> {
                     );
                   return Column(
                     children: [
-                      Center(
-                        child: TextButton(
-                          onPressed: timeline.requestHistory,
-                          child: const Text('Load more...'),
+                      if (_isLoadingMore)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Loading more messages...'),
+                            ],
+                          ),
                         ),
-                      ),
                       const Divider(height: 1),
                       Expanded(
                         child: ListView.builder(
+                          controller: _scrollController,
                           reverse: true,
                           itemCount: sortedEvents.length,
                           itemBuilder: (context, i) {
