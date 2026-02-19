@@ -354,7 +354,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         }
 
         // Check if we should load more after this update
-        final list = _slidingSync!.getList('all_rooms');
+        final list = _slidingSync?.getList('all_rooms');
         final loadedRoomCount =
             list?.roomIds.where((id) => id.isNotEmpty).length ?? 0;
 
