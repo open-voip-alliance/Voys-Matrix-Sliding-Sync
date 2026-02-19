@@ -812,6 +812,7 @@ class RoomPage extends StatefulWidget {
 class _RoomPageState extends State<RoomPage> {
   late final Future<Timeline> _timelineFuture;
   final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+  int _messageCount = 0;
 
   @override
   void initState() {
@@ -822,9 +823,11 @@ class _RoomPageState extends State<RoomPage> {
           },
           onInsert: (i) {
             _listKey.currentState?.insertItem(i);
+            setState(() => _messageCount++);
           },
           onRemove: (i) {
             _listKey.currentState?.removeItem(i, (_, _) => const ListTile());
+            setState(() => _messageCount--);
           },
           // Request enough initial events to include what sliding sync loaded plus more from DB
           limit: Room.defaultHistoryCount,
@@ -846,6 +849,7 @@ class _RoomPageState extends State<RoomPage> {
               historyCount: Room.defaultHistoryCount,
             );
           }
+          if (mounted) setState(() => _messageCount = timeline.events.length);
           return timeline;
         });
     super.initState();
@@ -863,7 +867,18 @@ class _RoomPageState extends State<RoomPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.room.getLocalizedDisplayname())),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.room.getLocalizedDisplayname()),
+            Text(
+              '$_messageCount messages loaded',
+              style: const TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
