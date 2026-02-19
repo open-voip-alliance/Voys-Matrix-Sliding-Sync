@@ -37,7 +37,7 @@ cd example && flutter run
 **SlidingSync** (`lib/src/sliding_sync.dart`)
 - Main controller managing the sync loop, position tracking, and response processing
 - Uses builder pattern for configuration: `SlidingSync.builder(id: 'main', client: client)`
-- Maintains sticky room subscriptions and transaction IDs for reliable updates
+- Room subscriptions are sent on every request (MSC4186 has no server-side sticky state)
 - Handles M_UNKNOWN_POS errors by resetting session and continuing
 - Caches position and list state to database for session persistence
 

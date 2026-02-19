@@ -264,6 +264,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
   bool _isInitializing = true;
   final ScrollController _scrollController = ScrollController();
   bool _isLoadingMore = false;
+  StreamSubscription? _timelineSubscription;
 
   @override
   void initState() {
@@ -342,6 +343,12 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
 
       if (kDebugMode) print('Sliding sync created, starting sync...');
 
+      // Rebuild when a local event is added (e.g. just-sent message) so the
+      // room list reflects the new lastEvent without waiting for the next sync.
+      _timelineSubscription = client.onTimelineEvent.stream.listen((_) {
+        if (mounted) setState(() {});
+      });
+
       // Listen to updates and trigger rebuilds
       _slidingSync!.updateStream.listen((update) {
         if (kDebugMode) {
@@ -411,6 +418,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
 
   @override
   void dispose() {
+    _timelineSubscription?.cancel();
     // Dispose the sliding sync object (which stops sync and closes streams)
     _slidingSync?.dispose();
     _scrollController.dispose();
@@ -440,10 +448,23 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     if (room.membership != Membership.join) {
       await room.join();
     }
+
+    // Subscribe to get full room state and more timeline events
+    if (kDebugMode) print('Subscribing to room ${room.id}');
+    _slidingSync?.subscribeToRooms({
+      room.id: RoomSubscription(
+        timelineLimit: 10,
+        requiredState: RequiredStateRequest.full(),
+        includeHeroes: true,
+      ),
+    });
+
     if (mounted) {
-      Navigator.of(
+      await Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => RoomPage(room: room)));
+      if (kDebugMode) print('Unsubscribing from room ${room.id}');
+      _slidingSync?.unsubscribeFromRooms([room.id]);
     }
   }
 
@@ -881,7 +902,11 @@ class _RoomPageState extends State<RoomPage> {
                       child: CircularProgressIndicator.adaptive(),
                     );
                   }
-                  final sorted = timeline.events.toList()
+                  // Sort newest-first so reverse:true ListView shows oldest
+                  // at the top and newest at the bottom (standard chat UX).
+                  // Explicit sort is needed because sliding sync can deliver
+                  // events out of order across sync batches.
+                  final sortedEvents = timeline.events.toList()
                     ..sort(
                       (a, b) => b.originServerTs.compareTo(a.originServerTs),
                     );
@@ -897,9 +922,9 @@ class _RoomPageState extends State<RoomPage> {
                       Expanded(
                         child: ListView.builder(
                           reverse: true,
-                          itemCount: sorted.length,
+                          itemCount: sortedEvents.length,
                           itemBuilder: (context, i) {
-                            final event = sorted[i];
+                            final event = sortedEvents[i];
                             if (event.relationshipEventId != null) {
                               return const SizedBox.shrink();
                             }

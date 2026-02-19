@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import 'dart:async';
-import 'dart:math';
 
 import 'package:matrix/matrix.dart';
 import 'package:voys_matrix_sliding_sync/src/api_extensions.dart';
@@ -32,9 +31,6 @@ class SlidingSync {
   /// Named lists
   final Map<String, SlidingSyncList> _lists = {};
 
-  /// Room subscriptions
-  final Map<String, RoomSubscription> _roomSubscriptions = {};
-
   /// Extensions configuration
   SlidingSyncExtensions _extensions;
 
@@ -58,14 +54,8 @@ class SlidingSync {
   /// Current sync future
   Future<void>? _currentSync;
 
-  /// Transaction ID for sticky parameters
-  String? _txnId;
-
-  /// Sticky room subscriptions (pending)
-  final Map<String, RoomSubscription> _stickyRoomSubscriptionsPending = {};
-
-  /// Sticky room subscriptions (applied)
-  final Map<String, RoomSubscription> _stickyRoomSubscriptionsApplied = {};
+  /// Active room subscriptions — sent in every request (MSC4186 has no server-side stickiness)
+  final Map<String, RoomSubscription> _activeRoomSubscriptions = {};
 
   /// Track which rooms we've already initialized to ignore repeated initial=true
   final Set<String> _initializedRooms = {};
@@ -143,14 +133,20 @@ class SlidingSync {
 
   /// Subscribes to specific rooms
   void subscribeToRooms(Map<String, RoomSubscription> subscriptions) {
-    _stickyRoomSubscriptionsPending.addAll(subscriptions);
+    _activeRoomSubscriptions.addAll(subscriptions);
+    // Evict these rooms from the seen-rooms tracking so that the server's
+    // upcoming initial=true response (with the subscription's higher
+    // timelineLimit / full required state) is processed and cached.
+    for (final roomId in subscriptions.keys) {
+      _initializedRooms.remove(roomId);
+      _latestEventIds.remove(roomId);
+    }
   }
 
   /// Unsubscribes from specific rooms
   void unsubscribeFromRooms(List<String> roomIds) {
     for (final roomId in roomIds) {
-      _stickyRoomSubscriptionsPending.remove(roomId);
-      _stickyRoomSubscriptionsApplied.remove(roomId);
+      _activeRoomSubscriptions.remove(roomId);
     }
   }
 
@@ -294,9 +290,7 @@ class SlidingSync {
       list.reset();
     }
 
-    // Clear sticky parameters
-    _stickyRoomSubscriptionsApplied.clear();
-    _stickyRoomSubscriptionsPending.clear();
+    // Active room subscriptions are already sent on every request, nothing to reset.
   }
 
   /// The main sync loop
@@ -364,28 +358,21 @@ class SlidingSync {
 
   /// Builds the sync request
   SlidingSyncRequest _buildRequest() {
-    // Generate transaction ID
-    _txnId =
-        '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1000000)}';
-
-    // Apply sticky room subscriptions
-    final roomSubs = Map<String, RoomSubscription>.from(_roomSubscriptions);
-    roomSubs.addAll(_stickyRoomSubscriptionsPending);
-
-    if (roomSubs.isNotEmpty) {
+    if (_activeRoomSubscriptions.isNotEmpty) {
       Logs().d(
-        '[SlidingSync] Including ${roomSubs.length} room subscriptions: ${roomSubs.keys.join(", ")}',
+        '[SlidingSync] Including ${_activeRoomSubscriptions.length} room subscriptions: ${_activeRoomSubscriptions.keys.join(", ")}',
       );
     }
 
     return SlidingSyncRequest(
       connId: id,
       pos: _pos,
-      txnId: _txnId,
       timeout: pollTimeout,
       setPresence: client.syncPresence?.toString().split('.').last,
       lists: _lists,
-      roomSubscriptions: roomSubs.isNotEmpty ? roomSubs : null,
+      roomSubscriptions: _activeRoomSubscriptions.isNotEmpty
+          ? Map.unmodifiable(_activeRoomSubscriptions)
+          : null,
       extensions: _extensions,
     );
   }
@@ -396,9 +383,6 @@ class SlidingSync {
   ) async {
     // Update position
     _pos = response.pos;
-
-    // Commit sticky parameters if this was our transaction
-    _commitStickyParameters();
 
     // Process list updates
     final listUpdates = <String, SlidingSyncListUpdate>{};
@@ -480,10 +464,14 @@ class SlidingSync {
         }
 
         // Check for new timeline events by comparing event IDs
-        // Server's numLive field is unreliable, so we track the latest event ID instead
+        // Server's numLive field is unreliable, so we track the latest event ID instead.
+        // Find the newest event by timestamp rather than assuming server order.
         var hasNewTimeline = false;
         if (roomData.timeline?.isNotEmpty ?? false) {
-          final latestEventId = roomData.timeline!.first.eventId;
+          final latestEvent = roomData.timeline!.reduce(
+            (a, b) => a.originServerTs.isAfter(b.originServerTs) ? a : b,
+          );
+          final latestEventId = latestEvent.eventId;
           final previousEventId = _latestEventIds[roomId];
 
           if (latestEventId != previousEventId) {
@@ -612,21 +600,22 @@ class SlidingSync {
       }
     }
 
-    // Process timeline events and track the most recent one
+    // Process timeline events. Sort oldest-first so events are emitted in
+    // chronological order regardless of how the server delivered them.
     Event? mostRecentEvent;
     if (data.timeline != null) {
-      for (final matrixEvent in data.timeline!) {
+      final sortedTimeline = data.timeline!.toList()
+        ..sort((a, b) => a.originServerTs.compareTo(b.originServerTs));
+
+      for (final matrixEvent in sortedTimeline) {
         final event = Event.fromMatrixEvent(
           matrixEvent,
           room,
           status: EventStatus.synced,
         );
 
-        // Track the most recent event
-        if (mostRecentEvent == null ||
-            event.originServerTs.isAfter(mostRecentEvent.originServerTs)) {
-          mostRecentEvent = event;
-        }
+        // Track most recent event by timestamp (last item after sorting)
+        mostRecentEvent = event;
 
         // Only emit events we haven't seen before to avoid duplicate processing
         if (!_emittedEventIds.contains(event.eventId)) {
@@ -636,18 +625,18 @@ class SlidingSync {
       }
     }
 
-    // Set lastEvent immediately after processing timeline events
-    // This must happen BEFORE any database operations that might trigger UI updates
-    if (mostRecentEvent != null) {
-      room.lastEvent = mostRecentEvent;
-    }
-
     final roomUpdate = JoinedRoomUpdate(
       timeline: data.timeline != null
           ? TimelineUpdate(
-              events: data.timeline,
+              // Sort events oldest-first by timestamp as the SDK expects.
+              // Sliding sync may deliver events out of chronological order,
+              // so explicit sorting is more reliable than just reversing.
+              events: data.timeline!.toList()
+                ..sort(
+                  (a, b) => a.originServerTs.compareTo(b.originServerTs),
+                ),
               // Force limited to false to prevent SDK from calling /messages API
-              // We manage lastEvent ourselves in sliding sync (set at line 617)
+              // We manage lastEvent ourselves in sliding sync.
               limited: false,
               prevBatch: data.prevBatch,
             )
@@ -663,11 +652,16 @@ class SlidingSync {
       unreadNotifications: data.notificationCounts,
     );
 
+    // Capture lastEvent before handleSync so we can compare afterwards.
+    // The list subscription may only carry a small timeline (e.g. limit 1),
+    // which could be older than a message the user just sent.
+    final previousLastEvent = room.lastEvent;
+
     // Store room update in database so handleSync can find the events
     await client.database.storeRoomUpdate(
       roomId,
       roomUpdate,
-      room.lastEvent, // Pass our lastEvent to store in database
+      mostRecentEvent, // Pass the true latest event to store in database
       client,
     );
 
@@ -682,13 +676,20 @@ class SlidingSync {
           rooms: RoomsUpdate(join: {roomId: roomUpdate}),
         ),
       );
+    }
 
-      // If handleSync replaced our event with a placeholder, restore it
-      if (mostRecentEvent != null &&
-          room.lastEvent != null &&
-          room.lastEvent!.eventId.startsWith(client.clientName)) {
-        room.lastEvent = mostRecentEvent;
-      }
+    // Restore lastEvent to whichever event is truly the most recent:
+    // either the newest event from this sync batch, or what was already set
+    // (e.g. a just-sent message). This prevents a partial timeline batch from
+    // overwriting a newer lastEvent with an older one.
+    final candidates = [
+      if (mostRecentEvent != null) mostRecentEvent,
+      if (previousLastEvent != null) previousLastEvent,
+    ];
+    if (candidates.isNotEmpty) {
+      room.lastEvent = candidates.reduce(
+        (a, b) => a.originServerTs.isAfter(b.originServerTs) ? a : b,
+      );
     }
   }
 
@@ -803,16 +804,6 @@ class SlidingSync {
           client.onPresenceChanged.add(presence);
         }
       }
-    }
-  }
-
-  /// Commits sticky parameters after successful request
-  void _commitStickyParameters() {
-    if (_txnId != null) {
-      // Move pending to applied
-      _stickyRoomSubscriptionsApplied.addAll(_stickyRoomSubscriptionsPending);
-      _stickyRoomSubscriptionsPending.clear();
-      _txnId = null;
     }
   }
 

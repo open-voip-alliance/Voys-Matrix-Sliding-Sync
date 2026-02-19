@@ -13,9 +13,6 @@ class SlidingSyncRequest {
   /// Position token from previous response
   final String? pos;
 
-  /// Transaction ID for sticky parameter tracking
-  final String? txnId;
-
   /// Long-poll timeout in milliseconds
   final int? timeout;
 
@@ -34,7 +31,6 @@ class SlidingSyncRequest {
   SlidingSyncRequest({
     this.connId,
     this.pos,
-    this.txnId,
     this.timeout,
     this.setPresence,
     this.lists,
@@ -45,11 +41,7 @@ class SlidingSyncRequest {
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
 
-    // Note: conn_id and txn_id might not be supported by all servers yet
-    // Commenting out for compatibility
-    // if (connId != null) json['conn_id'] = connId;
     if (pos != null) json['pos'] = pos;
-    // if (txnId != null) json['txn_id'] = txnId;
     // MSC4186: timeout is in request body (only effective when pos is set)
     if (timeout != null) json['timeout'] = timeout;
     if (setPresence != null) json['set_presence'] = setPresence;
