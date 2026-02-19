@@ -1,6 +1,7 @@
 // ignore_for_file: library_private_types_in_public_api
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,9 +11,16 @@ import 'package:sqflite/sqflite.dart' as sqlite;
 import 'package:voys_matrix_sliding_sync/voys_matrix_sliding_sync.dart';
 import 'package:voys_matrix_sliding_sync_example/logging_http_client.dart';
 
+Future<void> _loadEnv() async {
+  final env = Platform.environment;
+  _LoginPageState._lastUsername = env['MATRIX_USER'] ?? '';
+  _LoginPageState._lastPassword = env['MATRIX_PASS'] ?? '';
+  _LoginPageState._lastToken = env['VG_API'] ?? '';
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  await _loadEnv();
   runApp(ProviderScope(child: MatrixExampleChat()));
 }
 
