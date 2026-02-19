@@ -847,7 +847,11 @@ class _RoomPageState extends State<RoomPage> {
         )
         .then((timeline) async {
           _timeline = timeline;
-          if (timeline.events.length < Room.defaultHistoryCount) {
+          final hasRoomCreate = timeline.events.any(
+            (e) => e.type == EventTypes.RoomCreate,
+          );
+          if (!hasRoomCreate &&
+              timeline.events.length < Room.defaultHistoryCount) {
             await timeline.requestHistory(
               historyCount: Room.defaultHistoryCount,
             );
