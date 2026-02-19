@@ -147,6 +147,32 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     }
   }
 
+  void _clearDatabase() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final client = ref.read(clientProvider).valueOrNull;
+      await client?.dispose();
+      final dbPath = await sqlite.getDatabasesPath();
+      final path = '$dbPath/database.sqlite';
+      await sqlite.deleteDatabase(path);
+      ref.invalidate(clientProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Database cleared')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error clearing database: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   void _saveValues() {
     _lastHomeserver = _homeserverTextField.text;
     _lastUsername = _usernameTextField.text;
@@ -243,6 +269,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 child: _loading
                     ? const LinearProgressIndicator()
                     : const Text('Login'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _loading ? null : _clearDatabase,
+                child: const Text('Clear Database'),
               ),
             ),
           ],
@@ -840,9 +874,15 @@ class _RoomPageState extends State<RoomPage> {
   void initState() {
     _timelineFuture = widget.room
         .getTimeline(
-          onChange: (_) { if (mounted) setState(() {}); },
-          onInsert: (_) { if (mounted) setState(() {}); },
-          onRemove: (_) { if (mounted) setState(() {}); },
+          onChange: (_) {
+            if (mounted) setState(() {});
+          },
+          onInsert: (_) {
+            if (mounted) setState(() {});
+          },
+          onRemove: (_) {
+            if (mounted) setState(() {});
+          },
           limit: Room.defaultHistoryCount,
         )
         .then((timeline) async {
@@ -952,7 +992,9 @@ class _RoomPageState extends State<RoomPage> {
                               SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                               SizedBox(width: 8),
                               Text('Loading more messages...'),
