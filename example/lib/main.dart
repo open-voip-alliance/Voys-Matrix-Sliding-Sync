@@ -870,6 +870,11 @@ class _RoomPageState extends State<RoomPage> {
         _scrollController.position.maxScrollExtent - 200.0;
 
     if (isNearTop) {
+      final hasRoomCreate = timeline.events.any(
+        (e) => e.type == EventTypes.RoomCreate,
+      );
+      if (hasRoomCreate) return;
+
       setState(() => _isLoadingMore = true);
       timeline.requestHistory().whenComplete(() {
         if (mounted) setState(() => _isLoadingMore = false);
