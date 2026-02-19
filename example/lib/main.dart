@@ -811,17 +811,19 @@ class RoomPage extends StatefulWidget {
 
 class _RoomPageState extends State<RoomPage> {
   late final Future<Timeline> _timelineFuture;
+  Timeline? _timeline;
 
   @override
   void initState() {
     _timelineFuture = widget.room
         .getTimeline(
-          onChange: (_) => setState(() {}),
-          onInsert: (_) => setState(() {}),
-          onRemove: (_) => setState(() {}),
+          onChange: (_) { if (mounted) setState(() {}); },
+          onInsert: (_) { if (mounted) setState(() {}); },
+          onRemove: (_) { if (mounted) setState(() {}); },
           limit: Room.defaultHistoryCount,
         )
         .then((timeline) async {
+          _timeline = timeline;
           if (timeline.events.length < Room.defaultHistoryCount) {
             await timeline.requestHistory(
               historyCount: Room.defaultHistoryCount,
@@ -831,6 +833,12 @@ class _RoomPageState extends State<RoomPage> {
           return timeline;
         });
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    _timeline?.cancelSubscriptions();
+    super.dispose();
   }
 
   final TextEditingController _sendController = TextEditingController();
