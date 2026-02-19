@@ -811,45 +811,23 @@ class RoomPage extends StatefulWidget {
 
 class _RoomPageState extends State<RoomPage> {
   late final Future<Timeline> _timelineFuture;
-  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
-  int _messageCount = 0;
 
   @override
   void initState() {
     _timelineFuture = widget.room
         .getTimeline(
-          onChange: (i) {
-            _listKey.currentState?.setState(() {});
-          },
-          onInsert: (i) {
-            _listKey.currentState?.insertItem(i);
-            setState(() => _messageCount++);
-          },
-          onRemove: (i) {
-            _listKey.currentState?.removeItem(i, (_, _) => const ListTile());
-            setState(() => _messageCount--);
-          },
-          // Request enough initial events to include what sliding sync loaded plus more from DB
+          onChange: (_) => setState(() {}),
+          onInsert: (_) => setState(() {}),
+          onRemove: (_) => setState(() {}),
           limit: Room.defaultHistoryCount,
         )
         .then((timeline) async {
-          if (kDebugMode) {
-            print('Timeline loaded with ${timeline.events.length} events');
-          }
-          // Automatically load initial history when timeline is created
-          // Only request more if we have very few events (sliding sync only loads timelineLimit events)
-          // Request more history to fill the timeline beyond what sliding sync provided
           if (timeline.events.length < Room.defaultHistoryCount) {
-            if (kDebugMode) {
-              print(
-                'Requesting more history (have ${timeline.events.length}, want ${Room.defaultHistoryCount})',
-              );
-            }
             await timeline.requestHistory(
               historyCount: Room.defaultHistoryCount,
             );
           }
-          if (mounted) setState(() => _messageCount = timeline.events.length);
+          if (mounted) setState(() {});
           return timeline;
         });
     super.initState();
@@ -872,9 +850,12 @@ class _RoomPageState extends State<RoomPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.room.getLocalizedDisplayname()),
-            Text(
-              '$_messageCount messages loaded',
-              style: const TextStyle(fontSize: 14),
+            FutureBuilder<Timeline>(
+              future: _timelineFuture,
+              builder: (context, snapshot) => Text(
+                '${snapshot.data?.events.length ?? 0} messages loaded',
+                style: const TextStyle(fontSize: 14),
+              ),
             ),
           ],
         ),
@@ -892,6 +873,10 @@ class _RoomPageState extends State<RoomPage> {
                       child: CircularProgressIndicator.adaptive(),
                     );
                   }
+                  final sorted = timeline.events.toList()
+                    ..sort(
+                      (a, b) => b.originServerTs.compareTo(a.originServerTs),
+                    );
                   return Column(
                     children: [
                       Center(
@@ -902,25 +887,18 @@ class _RoomPageState extends State<RoomPage> {
                       ),
                       const Divider(height: 1),
                       Expanded(
-                        child: AnimatedList(
-                          key: _listKey,
+                        child: ListView.builder(
                           reverse: true,
-                          initialItemCount: timeline.events.length,
-                          itemBuilder: (context, i, animation) {
-                            final event = timeline.events[i];
-                            return event.relationshipEventId != null
-                                ? Container()
-                                : ScaleTransition(
-                                    scale: animation,
-                                    child: Opacity(
-                                      opacity: event.status.isSent ? 1 : 0.25,
-                                      child: Message(
-                                        event,
-                                        timeline,
-                                        widget.room,
-                                      ),
-                                    ),
-                                  );
+                          itemCount: sorted.length,
+                          itemBuilder: (context, i) {
+                            final event = sorted[i];
+                            if (event.relationshipEventId != null) {
+                              return const SizedBox.shrink();
+                            }
+                            return Opacity(
+                              opacity: event.status.isSent ? 1 : 0.25,
+                              child: Message(event, timeline, widget.room),
+                            );
                           },
                         ),
                       ),
