@@ -23,7 +23,9 @@ class SlidingSyncOnlyClient extends Client {
     super.roomPreviewLastEvents,
     super.sendTimelineEventTimeout,
     super.httpClient,
-  });
+  }) {
+    backgroundSync = false;
+  }
 
   /// Override the public sync method to prevent any sync calls.
   ///
