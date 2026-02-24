@@ -39,6 +39,7 @@ export 'src/sync_mode.dart'
 
 // Configuration
 export 'src/models/request.dart' show SlidingSyncExtensions, RoomSubscription;
+export 'src/models/filters.dart' show SlidingRoomFilter;
 export 'src/models/required_state.dart' show RequiredStateRequest;
 
 // Extensions
