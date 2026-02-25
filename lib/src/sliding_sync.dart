@@ -18,7 +18,6 @@ class SlidingSync {
     required this.id,
     required this.client,
     this.pollTimeout = 30000,
-    this.networkTimeout = 40000,
     SlidingSyncExtensions? extensions,
   }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
   /// Unique connection identifier
@@ -29,9 +28,6 @@ class SlidingSync {
 
   /// Long-poll timeout in milliseconds
   final int pollTimeout;
-
-  /// Network timeout in milliseconds
-  final int networkTimeout;
 
   /// Current position token
   String? _pos;
@@ -967,7 +963,6 @@ class SlidingSyncBuilder {
   final Client client;
 
   int pollTimeout = 30000;
-  int networkTimeout = 40000;
   SlidingSyncExtensions? extensions;
   final List<SlidingSyncList> _lists = [];
   final Map<String, RoomSubscription> _roomSubscriptions = {};
@@ -975,12 +970,6 @@ class SlidingSyncBuilder {
   /// Sets the poll timeout
   SlidingSyncBuilder withPollTimeout(int milliseconds) {
     pollTimeout = milliseconds;
-    return this;
-  }
-
-  /// Sets the network timeout
-  SlidingSyncBuilder withNetworkTimeout(int milliseconds) {
-    networkTimeout = milliseconds;
     return this;
   }
 
@@ -1008,7 +997,6 @@ class SlidingSyncBuilder {
       id: id,
       client: client,
       pollTimeout: pollTimeout,
-      networkTimeout: networkTimeout,
       extensions: extensions,
     );
 
