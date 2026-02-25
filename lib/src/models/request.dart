@@ -3,7 +3,6 @@ import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
 
 /// Request structure for sliding sync
 class SlidingSyncRequest {
-
   SlidingSyncRequest({
     this.connId,
     this.pos,
@@ -14,6 +13,7 @@ class SlidingSyncRequest {
     this.extensions,
     this.toDeviceSince,
   });
+
   /// Connection identifier (unique per client connection)
   final String? connId;
 
@@ -69,7 +69,6 @@ class SlidingSyncRequest {
 
 /// Subscription to a specific room
 class RoomSubscription {
-
   RoomSubscription({
     this.timelineLimit,
     this.requiredState,
@@ -104,7 +103,6 @@ class RoomSubscription {
 
 /// Extensions configuration
 class SlidingSyncExtensions {
-
   SlidingSyncExtensions({
     this.toDevice = false,
     this.e2ee = false,

@@ -12,13 +12,13 @@ const _listName = 'rooms';
 
 /// Main sliding sync controller
 class SlidingSync {
-
   SlidingSync({
     required this.id,
     required this.client,
     this.pollTimeout = 30000,
     SlidingSyncExtensions? extensions,
   }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
+
   /// Unique connection identifier
   final String id;
 
@@ -157,11 +157,13 @@ class SlidingSync {
           var room = client.getRoomById(roomId);
           if (room == null) {
             // Create room object with null lastEvent
-            room = Room(
-              id: roomId,
-              client: client,
-            )..lastEvent =
-                null; // Explicitly null to prevent "Refreshing..." placeholder
+            room =
+                Room(
+                    id: roomId,
+                    client: client,
+                  )
+                  ..lastEvent =
+                      null; // Explicitly null to prevent "Refreshing..." placeholder
             client.rooms.add(room);
             // Load room state from database
             await client.database.getSingleRoom(client, roomId);
@@ -925,7 +927,6 @@ class SlidingSync {
 
 /// Builder for configuring sliding sync
 class SlidingSyncBuilder {
-
   SlidingSyncBuilder({required this.id, required this.client});
   final String id;
   final Client client;

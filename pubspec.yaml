@@ -10,3 +10,5 @@ dependencies:
 
 dev_dependencies:
   lints: ^5.0.0
+  sqflite_common_ffi: any
+  test: ^1.25.0

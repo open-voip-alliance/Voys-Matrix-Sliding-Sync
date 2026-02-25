@@ -2,7 +2,6 @@ import 'package:matrix/matrix.dart';
 
 /// Response structure for sliding sync
 class SlidingSyncResponse {
-
   SlidingSyncResponse({
     required this.pos,
     this.lists,
@@ -36,6 +35,7 @@ class SlidingSyncResponse {
           : null,
     );
   }
+
   /// Position token for next request
   final String pos;
 
@@ -51,7 +51,6 @@ class SlidingSyncResponse {
 
 /// List response data
 class SlidingSyncListResponse {
-
   SlidingSyncListResponse({this.count, this.ops});
 
   factory SlidingSyncListResponse.fromJson(Map<String, dynamic> json) {
@@ -67,6 +66,7 @@ class SlidingSyncListResponse {
           : null,
     );
   }
+
   /// Total number of rooms matching filters
   final int? count;
 
@@ -76,7 +76,6 @@ class SlidingSyncListResponse {
 
 /// Operation for list updates
 class SlidingSyncOperation {
-
   SlidingSyncOperation({
     required this.op,
     this.range,
@@ -98,6 +97,7 @@ class SlidingSyncOperation {
       roomId: json['room_id'] as String?,
     );
   }
+
   /// Operation type (SYNC, INSERT, DELETE, INVALIDATE)
   final String op;
 
@@ -116,7 +116,6 @@ class SlidingSyncOperation {
 
 /// Room data in sliding sync response
 class SlidingSyncRoomData {
-
   SlidingSyncRoomData({
     this.name,
     this.avatarUrl,
@@ -206,6 +205,7 @@ class SlidingSyncRoomData {
       notificationCount: json['notification_count'] as int?,
     );
   }
+
   /// Calculated room name
   final String? name;
 
@@ -284,7 +284,6 @@ class SlidingSyncRoomData {
 
 /// Hero member information
 class SlidingSyncHero {
-
   SlidingSyncHero({required this.userId, this.name, this.avatarUrl});
 
   factory SlidingSyncHero.fromJson(Map<String, dynamic> json) {
@@ -294,6 +293,7 @@ class SlidingSyncHero {
       avatarUrl: json['avatar_url'] as String?,
     );
   }
+
   /// User ID
   final String userId;
 
@@ -306,7 +306,6 @@ class SlidingSyncHero {
 
 /// Extension response data
 class SlidingSyncExtensionResponse {
-
   SlidingSyncExtensionResponse({
     this.toDevice,
     this.e2ee,
@@ -342,6 +341,7 @@ class SlidingSyncExtensionResponse {
           : null,
     );
   }
+
   /// To-device events
   final ToDeviceExtension? toDevice;
 
@@ -363,7 +363,6 @@ class SlidingSyncExtensionResponse {
 
 /// To-device extension data
 class ToDeviceExtension {
-
   ToDeviceExtension({this.nextBatch, this.events});
 
   factory ToDeviceExtension.fromJson(Map<String, dynamic> json) {
@@ -376,6 +375,7 @@ class ToDeviceExtension {
           : null,
     );
   }
+
   /// Next batch token
   final String? nextBatch;
 
@@ -385,7 +385,6 @@ class ToDeviceExtension {
 
 /// E2EE extension data
 class E2EEExtension {
-
   E2EEExtension({
     this.deviceLists,
     this.deviceOneTimeKeysCount,
@@ -412,6 +411,7 @@ class E2EEExtension {
           : null,
     );
   }
+
   /// Device list changes
   final DeviceListsUpdate? deviceLists;
 
@@ -424,7 +424,6 @@ class E2EEExtension {
 
 /// Account data extension
 class AccountDataExtension {
-
   AccountDataExtension({this.global, this.rooms});
 
   factory AccountDataExtension.fromJson(Map<String, dynamic> json) {
@@ -446,6 +445,7 @@ class AccountDataExtension {
           : null,
     );
   }
+
   /// Global account data events
   final List<BasicEvent>? global;
 
@@ -455,7 +455,6 @@ class AccountDataExtension {
 
 /// Receipts extension
 class ReceiptsExtension {
-
   ReceiptsExtension({this.rooms});
 
   factory ReceiptsExtension.fromJson(Map<String, dynamic> json) {
@@ -470,13 +469,13 @@ class ReceiptsExtension {
           : null,
     );
   }
+
   /// Room receipts
   final Map<String, ReceiptContent>? rooms;
 }
 
 /// Receipt content for a room
 class ReceiptContent {
-
   ReceiptContent({required this.content});
 
   factory ReceiptContent.fromJson(Map<String, dynamic> json) {
@@ -487,7 +486,6 @@ class ReceiptContent {
 
 /// Typing extension
 class TypingExtension {
-
   TypingExtension({this.rooms});
 
   factory TypingExtension.fromJson(Map<String, dynamic> json) {
@@ -502,13 +500,13 @@ class TypingExtension {
           : null,
     );
   }
+
   /// Rooms with typing users
   final Map<String, TypingContent>? rooms;
 }
 
 /// Typing content for a room
 class TypingContent {
-
   TypingContent({required this.userIds});
 
   factory TypingContent.fromJson(Map<String, dynamic> json) {
@@ -520,13 +518,13 @@ class TypingContent {
           [],
     );
   }
+
   /// User IDs of users currently typing
   final List<String> userIds;
 }
 
 /// Presence extension
 class PresenceExtension {
-
   PresenceExtension({this.events});
 
   factory PresenceExtension.fromJson(Map<String, dynamic> json) {
@@ -538,6 +536,7 @@ class PresenceExtension {
           : null,
     );
   }
+
   /// Presence events
   final List<BasicEvent>? events;
 }

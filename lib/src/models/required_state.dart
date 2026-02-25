@@ -1,6 +1,5 @@
 /// Represents the required state configuration for sliding sync
 class RequiredStateRequest {
-
   RequiredStateRequest({required this.include}) {
     if (include.length > 100) {
       throw ArgumentError('Maximum 100 state elements allowed in include list');

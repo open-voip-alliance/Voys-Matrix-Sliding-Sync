@@ -6,7 +6,6 @@ import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 
 /// Manages a sliding sync list
 class SlidingSyncList {
-
   SlidingSyncList({
     SyncMode syncMode = SyncMode.selective,
     List<List<int>>? ranges,
@@ -65,6 +64,7 @@ class SlidingSyncList {
       batchSize: batchSize,
     );
   }
+
   /// Sync mode for this list
   SyncMode _syncMode;
 
