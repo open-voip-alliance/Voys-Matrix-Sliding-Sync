@@ -423,12 +423,8 @@ class SlidingSync {
             }
           }
 
-          // Update the list with count (operations already applied above)
-          list.updateFromResponse(
-            count: listResponse.count,
-            roomIds: null, // Operations handle room updates
-            ranges: null, // Operations handle range updates
-          );
+          // Apply the authoritative count from the server after ops are done
+          list.applyServerCount(listResponse.count);
 
           // Only add to updates if operations actually changed something
           if (hasActualChanges) {

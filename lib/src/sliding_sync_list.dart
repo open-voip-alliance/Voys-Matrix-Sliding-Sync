@@ -283,44 +283,14 @@ class SlidingSyncList {
     return json;
   }
 
-  /// Updates from a sync response
-  void updateFromResponse({
-    required int? count,
-    required List<String>? roomIds,
-    required List<List<int>>? ranges,
-  }) {
-    // Update total count
-    if (count != null) {
+  /// Applies the authoritative total room count from the server response.
+  /// Called after list operations have been applied so the count can
+  /// correct any drift introduced by INSERT/DELETE adjustments.
+  void applyServerCount(int? count) {
+    if (count != null && count != _totalRoomCount) {
       _totalRoomCount = count;
+      _updateLoadingState();
     }
-
-    // Update room IDs based on ranges
-    if (roomIds != null && ranges != null) {
-      for (var i = 0; i < ranges.length && i < roomIds.length; i++) {
-        final range = ranges[i];
-        if (range.length == 2) {
-          final start = range[0];
-          final end = range[1];
-          final rangeRoomIds = roomIds.sublist(
-            i * (end - start + 1),
-            (i + 1) * (end - start + 1),
-          );
-
-          // Ensure list is large enough
-          while (_roomIds.length <= end) {
-            _roomIds.add('');
-          }
-
-          // Update the range
-          for (var j = 0; j < rangeRoomIds.length && start + j <= end; j++) {
-            _roomIds[start + j] = rangeRoomIds[j];
-          }
-        }
-      }
-    }
-
-    // Update state
-    _updateLoadingState();
   }
 
   /// Apply a SYNC operation - replaces room IDs in a range
