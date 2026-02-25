@@ -164,8 +164,7 @@ class SlidingSync {
       return;
     }
 
-    // ignore: avoid_print
-    print('[SlidingSync] Starting sync loop (id: $id)');
+    Logs().i('[SlidingSync] Starting sync loop (id: $id)');
     _isSyncing = true;
     _stopCompleter = null;
     _updateStatus(SlidingSyncStatus.waitingForResponse);
@@ -246,14 +245,12 @@ class SlidingSync {
       return;
     }
 
-    // ignore: avoid_print
-    print('[SlidingSync] Stopping sync loop (id: $id)');
+    Logs().i('[SlidingSync] Stopping sync loop (id: $id)');
     _stopCompleter = Completer<void>();
     await _stopCompleter!.future;
     _stopCompleter = null;
     _hasEmittedFirstUpdate = false;
-    // ignore: avoid_print
-    print('[SlidingSync] Sync loop stopped (id: $id)');
+    Logs().i('[SlidingSync] Sync loop stopped (id: $id)');
   }
 
   /// Performs a single sync request
@@ -889,8 +886,7 @@ class SlidingSync {
   /// Disposes resources
   /// Note: This will stop the sync loop if it's running
   Future<void> dispose() async {
-    // ignore: avoid_print
-    print('[SlidingSync] Disposing resources (id: $id)');
+    Logs().i('[SlidingSync] Disposing resources (id: $id)');
 
     // Stop sync loop if running
     if (_isSyncing) {
@@ -907,8 +903,7 @@ class SlidingSync {
     await _updateController.close();
     await _statusController.close();
 
-    // ignore: avoid_print
-    print('[SlidingSync] Resources disposed (id: $id)');
+    Logs().i('[SlidingSync] Resources disposed (id: $id)');
   }
 }
 
