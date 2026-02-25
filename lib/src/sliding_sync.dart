@@ -842,11 +842,9 @@ class SlidingSync {
     // Process presence
     if (extensions.presence != null && extensions.presence!.events != null) {
       for (final event in extensions.presence!.events!) {
-        // Presence events have 'sender' in content
-        final userId = event.content['sender'] as String?;
-        if (userId != null) {
-          final presence = CachedPresence.fromJson(event.content);
-          client.onPresenceChanged.add(presence);
+        // Guard against malformed events that are missing the sender field
+        if (event.content['sender'] is String) {
+          client.onPresenceChanged.add(CachedPresence.fromJson(event.content));
         }
       }
     }
