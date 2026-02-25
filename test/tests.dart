@@ -50,7 +50,7 @@ void main() {
     );
 
     slidingSync =
-        SlidingSync.builder(id: 'integration-test', client: client)
+        SlidingSync.builder(client: client)
             .addList(
               SlidingSyncList(
                 syncMode: SyncMode.growing,

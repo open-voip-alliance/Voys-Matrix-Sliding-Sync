@@ -9,18 +9,15 @@ import 'package:voys_matrix_sliding_sync/src/sliding_sync_update.dart';
 import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 
 const _listName = 'rooms';
+const _connId = 'sliding_sync';
 
 /// Main sliding sync controller
 class SlidingSync {
   SlidingSync({
-    required this.id,
     required this.client,
     this.pollTimeout = 30000,
     SlidingSyncExtensions? extensions,
   }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
-
-  /// Unique connection identifier
-  final String id;
 
   /// The client instance
   final Client client;
@@ -73,11 +70,8 @@ class SlidingSync {
   String? _toDeviceSince;
 
   /// Creates a builder for configuring sliding sync
-  static SlidingSyncBuilder builder({
-    required String id,
-    required Client client,
-  }) {
-    return SlidingSyncBuilder(id: id, client: client);
+  static SlidingSyncBuilder builder({required Client client}) {
+    return SlidingSyncBuilder(client: client);
   }
 
   /// Stream of sync updates
@@ -130,7 +124,7 @@ class SlidingSync {
       return;
     }
 
-    Logs().i('[SlidingSync] Starting sync loop (id: $id)');
+    Logs().i('[SlidingSync] Starting sync loop (id: $_connId)');
     _isSyncing = true;
     _stopCompleter = null;
     _updateStatus(SlidingSyncStatus.waitingForResponse);
@@ -213,12 +207,12 @@ class SlidingSync {
       return;
     }
 
-    Logs().i('[SlidingSync] Stopping sync loop (id: $id)');
+    Logs().i('[SlidingSync] Stopping sync loop (id: $_connId)');
     _stopCompleter = Completer<void>();
     await _stopCompleter!.future;
     _stopCompleter = null;
     _hasEmittedFirstUpdate = false;
-    Logs().i('[SlidingSync] Sync loop stopped (id: $id)');
+    Logs().i('[SlidingSync] Sync loop stopped (id: $_connId)');
   }
 
   /// Performs a single sync request
@@ -330,7 +324,7 @@ class SlidingSync {
     }
 
     return SlidingSyncRequest(
-      connId: id,
+      connId: _connId,
       pos: _pos,
       timeout: pollTimeout,
       setPresence: client.syncPresence?.toString().split('.').last,
@@ -832,7 +826,7 @@ class SlidingSync {
   /// Loads cached position from database
   Future<void> _loadCachedPosition() async {
     final accountData = await client.database.getAccountData();
-    final cachedPosEvent = accountData['sliding_sync_pos_$id'];
+    final cachedPosEvent = accountData['sliding_sync_pos_$_connId'];
     if (cachedPosEvent != null && cachedPosEvent.content['pos'] is String) {
       _pos = cachedPosEvent.content['pos']! as String;
       _toDeviceSince = cachedPosEvent.content['to_device_since'] as String?;
@@ -893,7 +887,7 @@ class SlidingSync {
         };
       }
 
-      await client.database.storeAccountData('sliding_sync_pos_$id', {
+      await client.database.storeAccountData('sliding_sync_pos_$_connId', {
         'pos': _pos,
         'lists': listsState,
         if (_toDeviceSince != null) 'to_device_since': _toDeviceSince,
@@ -904,7 +898,7 @@ class SlidingSync {
   /// Disposes resources
   /// Note: This will stop the sync loop if it's running
   Future<void> dispose() async {
-    Logs().i('[SlidingSync] Disposing resources (id: $id)');
+    Logs().i('[SlidingSync] Disposing resources (id: $_connId)');
 
     // Stop sync loop if running
     if (_isSyncing) {
@@ -921,14 +915,13 @@ class SlidingSync {
     await _updateController.close();
     await _statusController.close();
 
-    Logs().i('[SlidingSync] Resources disposed (id: $id)');
+    Logs().i('[SlidingSync] Resources disposed (id: $_connId)');
   }
 }
 
 /// Builder for configuring sliding sync
 class SlidingSyncBuilder {
-  SlidingSyncBuilder({required this.id, required this.client});
-  final String id;
+  SlidingSyncBuilder({required this.client});
   final Client client;
 
   int pollTimeout = 30000;
@@ -963,7 +956,6 @@ class SlidingSyncBuilder {
   /// Builds the sliding sync instance
   SlidingSync build() {
     final slidingSync = SlidingSync(
-      id: id,
       client: client,
       pollTimeout: pollTimeout,
       extensions: extensions,

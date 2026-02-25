@@ -11,17 +11,17 @@ extension SlidingSyncClientExtensions on Client {
   ///
   /// Example usage:
   /// ```dart
-  /// final sync = client.createSlidingSync('main')
+  /// final sync = client.createSlidingSync()
   ///   ..addList(SlidingSyncList.allRoomsMinimal());
   ///
   /// await sync.startSync();
   /// ```
-  SlidingSync createSlidingSync(String id) {
-    return SlidingSync(id: id, client: this);
+  SlidingSync createSlidingSync() {
+    return SlidingSync(client: this);
   }
 
   /// Creates a sliding sync builder for advanced configuration
-  SlidingSyncBuilder createSlidingSyncBuilder(String id) {
-    return SlidingSync.builder(id: id, client: this);
+  SlidingSyncBuilder createSlidingSyncBuilder() {
+    return SlidingSync.builder(client: this);
   }
 }
