@@ -4,17 +4,9 @@
 /// Represents the required state configuration for sliding sync
 class RequiredStateRequest {
 
-  RequiredStateRequest({
-    required this.include,
-    this.exclude,
-    this.lazyMembers,
-  }) {
-    // Validate input
+  RequiredStateRequest({required this.include}) {
     if (include.length > 100) {
       throw ArgumentError('Maximum 100 state elements allowed in include list');
-    }
-    if (exclude != null && exclude!.length > 100) {
-      throw ArgumentError('Maximum 100 state elements allowed in exclude list');
     }
   }
 
@@ -22,13 +14,13 @@ class RequiredStateRequest {
   factory RequiredStateRequest.minimal() {
     return RequiredStateRequest(
       include: [
+        ['m.room.member', r'$LAZY'], // Lazy-load members
         ['m.room.name', ''],
         ['m.room.avatar', ''],
         ['m.room.topic', ''],
         ['m.room.canonical_alias', ''],
         ['m.room.join_rules', ''],
       ],
-      lazyMembers: true,
     );
   }
 
@@ -36,6 +28,7 @@ class RequiredStateRequest {
   factory RequiredStateRequest.full() {
     return RequiredStateRequest(
       include: [
+        ['m.room.member', r'$LAZY'],
         ['m.room.name', ''],
         ['m.room.avatar', ''],
         ['m.room.topic', ''],
@@ -50,7 +43,6 @@ class RequiredStateRequest {
         ['m.space.child', '*'], // All space children
         ['m.space.parent', '*'], // All space parents
       ],
-      lazyMembers: true,
     );
   }
 
@@ -58,30 +50,11 @@ class RequiredStateRequest {
   /// Format: [["event_type", "state_key"]]
   /// Special values:
   /// - "*" as state_key means all state keys for that event type
-  /// - An empty list entry [] serializes to {} which matches all state events
+  /// - "$LAZY" for m.room.member means lazy-load member events
+  ///
+  /// Note: The server (Synapse MSC4186 implementation) expects a plain list
+  /// format rather than the object format described in the MSC4186 spec draft.
   final List<List<String>> include;
 
-  /// State events to exclude from the response (optional)
-  final List<List<String>>? exclude;
-
-  /// Lazy-load room member events (m.room.member) rather than including them
-  /// in required_state. Equivalent to the MSC4186 `lazy_members` flag.
-  final bool? lazyMembers;
-
-  Map<String, dynamic> toJson() {
-    Map<String, dynamic> elementToJson(List<String> pair) {
-      if (pair.isEmpty) return {};
-      return {
-        'type': pair[0],
-        if (pair.length > 1) 'state_key': pair[1],
-      };
-    }
-
-    return {
-      'include': include.map(elementToJson).toList(),
-      if (exclude != null && exclude!.isNotEmpty)
-        'exclude': exclude!.map(elementToJson).toList(),
-      if (lazyMembers ?? false) 'lazy_members': true,
-    };
-  }
+  List<List<String>> toJson() => include;
 }
