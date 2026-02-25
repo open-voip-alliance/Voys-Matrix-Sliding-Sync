@@ -24,4 +24,4 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 ACCESS_TOKEN="$TOKEN" \
-  dart test test/sliding_sync_integration_test.dart
+  dart test test/tests.dart
