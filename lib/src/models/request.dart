@@ -16,6 +16,7 @@ class SlidingSyncRequest {
     this.lists,
     this.roomSubscriptions,
     this.extensions,
+    this.toDeviceSince,
   });
   /// Connection identifier (unique per client connection)
   final String? connId;
@@ -38,6 +39,9 @@ class SlidingSyncRequest {
   /// Extensions to enable
   final SlidingSyncExtensions? extensions;
 
+  /// To-device batch token from the previous response (MSC4186 `extensions.to_device.since`)
+  final String? toDeviceSince;
+
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
 
@@ -56,7 +60,7 @@ class SlidingSyncRequest {
       );
     }
     if (extensions != null) {
-      final extensionsJson = extensions!.toJson();
+      final extensionsJson = extensions!.toJson(toDeviceSince: toDeviceSince);
       if (extensionsJson.isNotEmpty) {
         json['extensions'] = extensionsJson;
       }
@@ -259,10 +263,15 @@ class SlidingSyncExtensions {
   /// Enable presence extension
   final bool presence;
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({String? toDeviceSince}) {
     final json = <String, dynamic>{};
 
-    if (toDevice) json['to_device'] = {'enabled': true};
+    if (toDevice) {
+      json['to_device'] = {
+        'enabled': true,
+        if (toDeviceSince != null) 'since': toDeviceSince,
+      };
+    }
     if (e2ee) json['e2ee'] = {'enabled': true};
     if (accountData) json['account_data'] = {'enabled': true};
     if (receipts) json['receipts'] = {'enabled': true};

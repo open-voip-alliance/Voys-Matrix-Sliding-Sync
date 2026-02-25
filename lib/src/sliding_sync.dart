@@ -74,6 +74,9 @@ class SlidingSync {
   /// Track which events we've already emitted to avoid duplicates
   final Set<String> _emittedEventIds = {};
 
+  /// To-device batch token — echoed back to the server as `extensions.to_device.since`
+  String? _toDeviceSince;
+
   /// Creates a builder for configuring sliding sync
   static SlidingSyncBuilder builder({
     required String id,
@@ -371,6 +374,7 @@ class SlidingSync {
           ? Map.unmodifiable(_activeRoomSubscriptions)
           : null,
       extensions: _extensions,
+      toDeviceSince: _toDeviceSince,
     );
   }
 
@@ -691,9 +695,16 @@ class SlidingSync {
     SlidingSyncExtensionResponse extensions,
   ) async {
     // Process to-device events
-    if (extensions.toDevice != null && extensions.toDevice!.events != null) {
-      for (final event in extensions.toDevice!.events!) {
-        client.onToDeviceEvent.add(event);
+    if (extensions.toDevice != null) {
+      // Advance the to-device batch token so the server knows we've processed
+      // these events and won't re-deliver them on reconnect (MSC4186 §to_device).
+      if (extensions.toDevice!.nextBatch != null) {
+        _toDeviceSince = extensions.toDevice!.nextBatch;
+      }
+      if (extensions.toDevice!.events != null) {
+        for (final event in extensions.toDevice!.events!) {
+          client.onToDeviceEvent.add(event);
+        }
       }
     }
 
@@ -813,6 +824,7 @@ class SlidingSync {
     final cachedPosEvent = accountData['sliding_sync_pos_$id'];
     if (cachedPosEvent != null && cachedPosEvent.content['pos'] is String) {
       _pos = cachedPosEvent.content['pos']! as String;
+      _toDeviceSince = cachedPosEvent.content['to_device_since'] as String?;
 
       // Restore list state (similar to Rust SDK's cold_cache)
       if (cachedPosEvent.content['lists'] is Map) {
@@ -873,6 +885,7 @@ class SlidingSync {
       await client.database.storeAccountData('sliding_sync_pos_$id', {
         'pos': _pos,
         'lists': listsState,
+        if (_toDeviceSince != null) 'to_device_since': _toDeviceSince,
       });
     }
   }
