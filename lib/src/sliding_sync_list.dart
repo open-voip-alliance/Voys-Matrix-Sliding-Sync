@@ -9,48 +9,6 @@ import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 
 /// Manages a sliding sync list
 class SlidingSyncList {
-  /// Unique name for this list
-  final String name;
-
-  /// Sync mode for this list
-  SyncMode _syncMode;
-
-  /// Current loading state
-  final StreamController<SlidingSyncListLoadingState> _stateController =
-      StreamController<SlidingSyncListLoadingState>.broadcast();
-
-  /// Current list of room IDs in order
-  List<String> _roomIds = [];
-
-  /// Total number of rooms matching filters
-  int? _totalRoomCount;
-
-  /// Timeline limit for rooms in this list
-  int _timelineLimit;
-
-  /// Required state configuration
-  RequiredStateRequest? _requiredState;
-
-  /// Room filters
-  SlidingRoomFilter? _filters;
-
-  /// Current ranges being synced
-  List<List<int>> _ranges = [];
-
-  /// Batch size for paging/growing modes
-  int _batchSize;
-
-  /// Current position for paging mode
-  int _currentPageStart = 0;
-
-  /// Maximum number of rooms to fetch
-  int? _maximumNumberOfRooms;
-
-  /// Whether to include hero members
-  bool _includeHeroes;
-
-  /// Current loading state
-  SlidingSyncListLoadingState _state = SlidingSyncListLoadingState.notLoaded;
 
   SlidingSyncList({
     required this.name,
@@ -116,13 +74,54 @@ class SlidingSyncList {
     return SlidingSyncList(
       name: name,
       syncMode: SyncMode.growing,
-      timelineLimit: 1,
       requiredState: RequiredStateRequest.minimal(),
       filters: SlidingRoomFilter.inSpace(spaceId),
       batchSize: batchSize,
       includeHeroes: true,
     );
   }
+  /// Unique name for this list
+  final String name;
+
+  /// Sync mode for this list
+  SyncMode _syncMode;
+
+  /// Current loading state
+  final StreamController<SlidingSyncListLoadingState> _stateController =
+      StreamController<SlidingSyncListLoadingState>.broadcast();
+
+  /// Current list of room IDs in order
+  List<String> _roomIds = [];
+
+  /// Total number of rooms matching filters
+  int? _totalRoomCount;
+
+  /// Timeline limit for rooms in this list
+  int _timelineLimit;
+
+  /// Required state configuration
+  RequiredStateRequest? _requiredState;
+
+  /// Room filters
+  SlidingRoomFilter? _filters;
+
+  /// Current ranges being synced
+  List<List<int>> _ranges = [];
+
+  /// Batch size for paging/growing modes
+  int _batchSize;
+
+  /// Current position for paging mode
+  int _currentPageStart = 0;
+
+  /// Maximum number of rooms to fetch
+  int? _maximumNumberOfRooms;
+
+  /// Whether to include hero members
+  bool _includeHeroes;
+
+  /// Current loading state
+  SlidingSyncListLoadingState _state = SlidingSyncListLoadingState.notLoaded;
 
   /// Stream of state changes
   Stream<SlidingSyncListLoadingState> get stateStream =>

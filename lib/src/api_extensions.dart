@@ -22,7 +22,7 @@ extension SlidingSyncMatrixApiExtensions on MatrixApi {
 
     // MSC4186 (Simplified Sliding Sync) uses the org.matrix.simplified_msc3575 endpoint identifier
     // Note: Matrix paths are relative to /_matrix, so this becomes /_matrix/client/unstable/org.matrix.simplified_msc3575/sync
-    return await request(
+    return request(
       RequestType.POST,
       '/client/unstable/org.matrix.simplified_msc3575/sync',
       data: body,

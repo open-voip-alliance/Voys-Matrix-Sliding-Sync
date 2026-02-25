@@ -5,17 +5,6 @@ import 'package:matrix/matrix.dart';
 
 /// Response structure for sliding sync
 class SlidingSyncResponse {
-  /// Position token for next request
-  final String pos;
-
-  /// Named list updates
-  final Map<String, SlidingSyncListResponse>? lists;
-
-  /// Room data keyed by room ID
-  final Map<String, SlidingSyncRoomData>? rooms;
-
-  /// Extension data
-  final SlidingSyncExtensionResponse? extensions;
 
   SlidingSyncResponse({
     required this.pos,
@@ -50,15 +39,21 @@ class SlidingSyncResponse {
           : null,
     );
   }
+  /// Position token for next request
+  final String pos;
+
+  /// Named list updates
+  final Map<String, SlidingSyncListResponse>? lists;
+
+  /// Room data keyed by room ID
+  final Map<String, SlidingSyncRoomData>? rooms;
+
+  /// Extension data
+  final SlidingSyncExtensionResponse? extensions;
 }
 
 /// List response data
 class SlidingSyncListResponse {
-  /// Total number of rooms matching filters
-  final int? count;
-
-  /// Operations to apply to the list
-  final List<SlidingSyncOperation>? ops;
 
   SlidingSyncListResponse({this.count, this.ops});
 
@@ -75,24 +70,15 @@ class SlidingSyncListResponse {
           : null,
     );
   }
+  /// Total number of rooms matching filters
+  final int? count;
+
+  /// Operations to apply to the list
+  final List<SlidingSyncOperation>? ops;
 }
 
 /// Operation for list updates
 class SlidingSyncOperation {
-  /// Operation type (SYNC, INSERT, DELETE, INVALIDATE)
-  final String op;
-
-  /// Range affected by the operation
-  final List<int>? range;
-
-  /// Index for INSERT/DELETE operations
-  final int? index;
-
-  /// Room IDs for SYNC operation
-  final List<String>? roomIds;
-
-  /// Room ID for INSERT operation
-  final String? roomId;
 
   SlidingSyncOperation({
     required this.op,
@@ -115,84 +101,24 @@ class SlidingSyncOperation {
       roomId: json['room_id'] as String?,
     );
   }
+  /// Operation type (SYNC, INSERT, DELETE, INVALIDATE)
+  final String op;
+
+  /// Range affected by the operation
+  final List<int>? range;
+
+  /// Index for INSERT/DELETE operations
+  final int? index;
+
+  /// Room IDs for SYNC operation
+  final List<String>? roomIds;
+
+  /// Room ID for INSERT operation
+  final String? roomId;
 }
 
 /// Room data in sliding sync response
 class SlidingSyncRoomData {
-  /// Calculated room name
-  final String? name;
-
-  /// Room avatar URL
-  final String? avatarUrl;
-
-  /// Room topic
-  final String? topic;
-
-  /// Room type (e.g., "m.space")
-  final String? roomType;
-
-  /// Number of joined members
-  final int? joinedCount;
-
-  /// Number of invited members
-  final int? invitedCount;
-
-  /// Number of hero members
-  final int? heroCount;
-
-  /// Hero member information for room name calculation
-  final List<SlidingSyncHero>? heroes;
-
-  /// Activity timestamp in milliseconds
-  final int? bumpStamp;
-
-  /// Whether this is the initial sync for this room
-  final bool? initial;
-
-  /// Whether timeline was expanded due to increased limit
-  final bool? expandedTimeline;
-
-  /// Number of live events in timeline
-  final int? numLive;
-
-  /// Timeline events (newest first)
-  final List<MatrixEvent>? timeline;
-
-  /// Required state events
-  final List<MatrixEvent>? requiredState;
-
-  /// Pagination token for loading history
-  final String? prevBatch;
-
-  /// Whether the timeline is limited
-  final bool? limited;
-
-  /// Invite state for invited rooms
-  final List<StrippedStateEvent>? inviteState;
-
-  /// Whether the room is encrypted
-  final bool? encrypted;
-
-  /// Canonical alias for the room
-  final String? canonicalAlias;
-
-  /// Join rule for the room (public, invite, knock, etc)
-  final String? joinRule;
-
-  /// Knock state for knocked rooms
-  final List<StrippedStateEvent>? knockState;
-
-  /// DM target user IDs (for direct message identification)
-  final List<String>? dmTargets;
-
-  /// Notification counts
-  final UnreadNotificationCounts? notificationCounts;
-
-  /// Highlight count
-  final int? highlightCount;
-
-  /// Notification count
-  final int? notificationCount;
 
   SlidingSyncRoomData({
     this.name,
@@ -283,18 +209,84 @@ class SlidingSyncRoomData {
       notificationCount: json['notification_count'] as int?,
     );
   }
+  /// Calculated room name
+  final String? name;
+
+  /// Room avatar URL
+  final String? avatarUrl;
+
+  /// Room topic
+  final String? topic;
+
+  /// Room type (e.g., "m.space")
+  final String? roomType;
+
+  /// Number of joined members
+  final int? joinedCount;
+
+  /// Number of invited members
+  final int? invitedCount;
+
+  /// Number of hero members
+  final int? heroCount;
+
+  /// Hero member information for room name calculation
+  final List<SlidingSyncHero>? heroes;
+
+  /// Activity timestamp in milliseconds
+  final int? bumpStamp;
+
+  /// Whether this is the initial sync for this room
+  final bool? initial;
+
+  /// Whether timeline was expanded due to increased limit
+  final bool? expandedTimeline;
+
+  /// Number of live events in timeline
+  final int? numLive;
+
+  /// Timeline events (newest first)
+  final List<MatrixEvent>? timeline;
+
+  /// Required state events
+  final List<MatrixEvent>? requiredState;
+
+  /// Pagination token for loading history
+  final String? prevBatch;
+
+  /// Whether the timeline is limited
+  final bool? limited;
+
+  /// Invite state for invited rooms
+  final List<StrippedStateEvent>? inviteState;
+
+  /// Whether the room is encrypted
+  final bool? encrypted;
+
+  /// Canonical alias for the room
+  final String? canonicalAlias;
+
+  /// Join rule for the room (public, invite, knock, etc)
+  final String? joinRule;
+
+  /// Knock state for knocked rooms
+  final List<StrippedStateEvent>? knockState;
+
+  /// DM target user IDs (for direct message identification)
+  final List<String>? dmTargets;
+
+  /// Notification counts
+  final UnreadNotificationCounts? notificationCounts;
+
+  /// Highlight count
+  final int? highlightCount;
+
+  /// Notification count
+  final int? notificationCount;
 }
 
 /// Hero member information
 class SlidingSyncHero {
-  /// User ID
-  final String userId;
-
-  /// Display name
-  final String? name;
-
-  /// Avatar URL
-  final String? avatarUrl;
 
   SlidingSyncHero({required this.userId, this.name, this.avatarUrl});
 
@@ -305,27 +297,18 @@ class SlidingSyncHero {
       avatarUrl: json['avatar_url'] as String?,
     );
   }
+  /// User ID
+  final String userId;
+
+  /// Display name
+  final String? name;
+
+  /// Avatar URL
+  final String? avatarUrl;
 }
 
 /// Extension response data
 class SlidingSyncExtensionResponse {
-  /// To-device events
-  final ToDeviceExtension? toDevice;
-
-  /// E2EE data
-  final E2EEExtension? e2ee;
-
-  /// Account data
-  final AccountDataExtension? accountData;
-
-  /// Receipts
-  final ReceiptsExtension? receipts;
-
-  /// Typing notifications
-  final TypingExtension? typing;
-
-  /// Presence updates
-  final PresenceExtension? presence;
 
   SlidingSyncExtensionResponse({
     this.toDevice,
@@ -362,15 +345,27 @@ class SlidingSyncExtensionResponse {
           : null,
     );
   }
+  /// To-device events
+  final ToDeviceExtension? toDevice;
+
+  /// E2EE data
+  final E2EEExtension? e2ee;
+
+  /// Account data
+  final AccountDataExtension? accountData;
+
+  /// Receipts
+  final ReceiptsExtension? receipts;
+
+  /// Typing notifications
+  final TypingExtension? typing;
+
+  /// Presence updates
+  final PresenceExtension? presence;
 }
 
 /// To-device extension data
 class ToDeviceExtension {
-  /// Next batch token
-  final String? nextBatch;
-
-  /// To-device events
-  final List<ToDeviceEvent>? events;
 
   ToDeviceExtension({this.nextBatch, this.events});
 
@@ -384,18 +379,15 @@ class ToDeviceExtension {
           : null,
     );
   }
+  /// Next batch token
+  final String? nextBatch;
+
+  /// To-device events
+  final List<ToDeviceEvent>? events;
 }
 
 /// E2EE extension data
 class E2EEExtension {
-  /// Device list changes
-  final DeviceListsUpdate? deviceLists;
-
-  /// One-time key counts
-  final Map<String, int>? deviceOneTimeKeysCount;
-
-  /// Unused fallback key algorithms
-  final List<String>? deviceUnusedFallbackKeyTypes;
 
   E2EEExtension({
     this.deviceLists,
@@ -423,15 +415,18 @@ class E2EEExtension {
           : null,
     );
   }
+  /// Device list changes
+  final DeviceListsUpdate? deviceLists;
+
+  /// One-time key counts
+  final Map<String, int>? deviceOneTimeKeysCount;
+
+  /// Unused fallback key algorithms
+  final List<String>? deviceUnusedFallbackKeyTypes;
 }
 
 /// Account data extension
 class AccountDataExtension {
-  /// Global account data events
-  final List<BasicEvent>? global;
-
-  /// Room-specific account data
-  final Map<String, List<BasicEvent>>? rooms;
 
   AccountDataExtension({this.global, this.rooms});
 
@@ -454,12 +449,15 @@ class AccountDataExtension {
           : null,
     );
   }
+  /// Global account data events
+  final List<BasicEvent>? global;
+
+  /// Room-specific account data
+  final Map<String, List<BasicEvent>>? rooms;
 }
 
 /// Receipts extension
 class ReceiptsExtension {
-  /// Room receipts
-  final Map<String, ReceiptContent>? rooms;
 
   ReceiptsExtension({this.rooms});
 
@@ -475,23 +473,23 @@ class ReceiptsExtension {
           : null,
     );
   }
+  /// Room receipts
+  final Map<String, ReceiptContent>? rooms;
 }
 
 /// Receipt content for a room
 class ReceiptContent {
-  final Map<String, dynamic> content;
 
   ReceiptContent({required this.content});
 
   factory ReceiptContent.fromJson(Map<String, dynamic> json) {
     return ReceiptContent(content: json);
   }
+  final Map<String, dynamic> content;
 }
 
 /// Typing extension
 class TypingExtension {
-  /// Rooms with typing users
-  final Map<String, TypingContent>? rooms;
 
   TypingExtension({this.rooms});
 
@@ -507,12 +505,12 @@ class TypingExtension {
           : null,
     );
   }
+  /// Rooms with typing users
+  final Map<String, TypingContent>? rooms;
 }
 
 /// Typing content for a room
 class TypingContent {
-  /// User IDs of users currently typing
-  final List<String> userIds;
 
   TypingContent({required this.userIds});
 
@@ -525,12 +523,12 @@ class TypingContent {
           [],
     );
   }
+  /// User IDs of users currently typing
+  final List<String> userIds;
 }
 
 /// Presence extension
 class PresenceExtension {
-  /// Presence events
-  final List<BasicEvent>? events;
 
   PresenceExtension({this.events});
 
@@ -543,4 +541,6 @@ class PresenceExtension {
           : null,
     );
   }
+  /// Presence events
+  final List<BasicEvent>? events;
 }

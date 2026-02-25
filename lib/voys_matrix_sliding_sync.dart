@@ -26,21 +26,19 @@
 ///
 /// await slidingSync.startSync();
 /// ```
-library voys_matrix_sliding_sync;
+library;
 
+// Extensions
+export 'src/client_extensions.dart' show SlidingSyncClientExtensions;
+export 'src/models/filters.dart' show SlidingRoomFilter;
+// Configuration
+export 'src/models/request.dart' show RoomSubscription, SlidingSyncExtensions;
+export 'src/models/required_state.dart' show RequiredStateRequest;
 // Core
 export 'src/sliding_sync.dart' show SlidingSync, SlidingSyncBuilder;
 export 'src/sliding_sync_list.dart' show SlidingSyncList;
 export 'src/sliding_sync_only_client.dart' show SlidingSyncOnlyClient;
 export 'src/sliding_sync_update.dart'
-    show SlidingSyncUpdate, SlidingSyncListUpdate, SlidingSyncRoomUpdate;
+    show SlidingSyncListUpdate, SlidingSyncRoomUpdate, SlidingSyncUpdate;
 export 'src/sync_mode.dart'
-    show SyncMode, SlidingSyncListLoadingState, SlidingSyncStatus;
-
-// Configuration
-export 'src/models/request.dart' show SlidingSyncExtensions, RoomSubscription;
-export 'src/models/filters.dart' show SlidingRoomFilter;
-export 'src/models/required_state.dart' show RequiredStateRequest;
-
-// Extensions
-export 'src/client_extensions.dart' show SlidingSyncClientExtensions;
+    show SlidingSyncListLoadingState, SlidingSyncStatus, SyncMode;

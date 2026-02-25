@@ -5,6 +5,13 @@ import 'package:voys_matrix_sliding_sync/src/models/response.dart';
 
 /// Update from a sliding sync operation
 class SlidingSyncUpdate {
+
+  SlidingSyncUpdate({
+    required this.pos,
+    required this.lists,
+    required this.rooms,
+    this.extensions,
+  });
   /// New position token
   final String pos;
 
@@ -16,33 +23,26 @@ class SlidingSyncUpdate {
 
   /// Extension updates
   final SlidingSyncExtensionResponse? extensions;
-
-  SlidingSyncUpdate({
-    required this.pos,
-    required this.lists,
-    required this.rooms,
-    this.extensions,
-  });
 }
 
 /// Update for a sliding sync list
 class SlidingSyncListUpdate {
+
+  SlidingSyncListUpdate({this.count, this.ops});
   /// Total room count
   final int? count;
 
   /// Operations applied
   final List<SlidingSyncOperation>? ops;
-
-  SlidingSyncListUpdate({this.count, this.ops});
 }
 
 /// Update for a room
 class SlidingSyncRoomUpdate {
+
+  SlidingSyncRoomUpdate({required this.roomId, required this.roomData});
   /// Room ID
   final String roomId;
 
   /// Room data
   final SlidingSyncRoomData roomData;
-
-  SlidingSyncRoomUpdate({required this.roomId, required this.roomData});
 }

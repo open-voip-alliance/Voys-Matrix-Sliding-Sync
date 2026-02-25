@@ -7,6 +7,16 @@ import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
 
 /// Request structure for sliding sync
 class SlidingSyncRequest {
+
+  SlidingSyncRequest({
+    this.connId,
+    this.pos,
+    this.timeout,
+    this.setPresence,
+    this.lists,
+    this.roomSubscriptions,
+    this.extensions,
+  });
   /// Connection identifier (unique per client connection)
   final String? connId;
 
@@ -27,16 +37,6 @@ class SlidingSyncRequest {
 
   /// Extensions to enable
   final SlidingSyncExtensions? extensions;
-
-  SlidingSyncRequest({
-    this.connId,
-    this.pos,
-    this.timeout,
-    this.setPresence,
-    this.lists,
-    this.roomSubscriptions,
-    this.extensions,
-  });
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
@@ -68,6 +68,35 @@ class SlidingSyncRequest {
 
 /// Request representation for a sliding sync list
 class SlidingSyncListRequest {
+
+  SlidingSyncListRequest({
+    this.ranges,
+    this.timelineLimit,
+    this.requiredState,
+    this.filters,
+    this.sortBy,
+    this.bumpEventTypes,
+    this.includeHeroes,
+  });
+
+  factory SlidingSyncListRequest.fromJson(Map<String, dynamic> json) {
+    return SlidingSyncListRequest(
+      ranges: (json['ranges'] as List<dynamic>?)
+          ?.map((e) => (e as List<dynamic>).map((n) => n as int).toList())
+          .toList(),
+      timelineLimit: json['timeline_limit'] as int?,
+      requiredState: json['required_state'] != null
+          ? RequiredStateRequest.fromJson(
+              json['required_state'] as Map<String, dynamic>,
+            )
+          : null,
+      filters: json['filters'] != null
+          ? SlidingRoomFilter.fromJson(json['filters'] as Map<String, dynamic>)
+          : null,
+      sortBy: json['sort_by'] as String?,
+      includeHeroes: json['include_heroes'] as bool?,
+    );
+  }
   /// Ranges to request (e.g., [[0, 19], [100, 119]])
   final List<List<int>>? ranges;
 
@@ -88,16 +117,6 @@ class SlidingSyncListRequest {
 
   /// Include hero member info for room name calculation
   final bool? includeHeroes;
-
-  SlidingSyncListRequest({
-    this.ranges,
-    this.timelineLimit,
-    this.requiredState,
-    this.filters,
-    this.sortBy,
-    this.bumpEventTypes,
-    this.includeHeroes,
-  });
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
@@ -128,29 +147,28 @@ class SlidingSyncListRequest {
 
     return json;
   }
+}
 
-  factory SlidingSyncListRequest.fromJson(Map<String, dynamic> json) {
-    return SlidingSyncListRequest(
-      ranges: (json['ranges'] as List<dynamic>?)
-          ?.map((e) => (e as List<dynamic>).map((n) => n as int).toList())
-          .toList(),
+/// Subscription to a specific room
+class RoomSubscription {
+
+  RoomSubscription({
+    this.timelineLimit,
+    this.requiredState,
+    this.includeHeroes,
+  });
+
+  factory RoomSubscription.fromJson(Map<String, dynamic> json) {
+    return RoomSubscription(
       timelineLimit: json['timeline_limit'] as int?,
       requiredState: json['required_state'] != null
           ? RequiredStateRequest.fromJson(
               json['required_state'] as Map<String, dynamic>,
             )
           : null,
-      filters: json['filters'] != null
-          ? SlidingRoomFilter.fromJson(json['filters'] as Map<String, dynamic>)
-          : null,
-      sortBy: json['sort_by'] as String?,
       includeHeroes: json['include_heroes'] as bool?,
     );
   }
-}
-
-/// Subscription to a specific room
-class RoomSubscription {
   /// Timeline event limit
   final int? timelineLimit;
 
@@ -159,12 +177,6 @@ class RoomSubscription {
 
   /// Include hero members
   final bool? includeHeroes;
-
-  RoomSubscription({
-    this.timelineLimit,
-    this.requiredState,
-    this.includeHeroes,
-  });
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
@@ -181,22 +193,54 @@ class RoomSubscription {
 
     return json;
   }
-
-  factory RoomSubscription.fromJson(Map<String, dynamic> json) {
-    return RoomSubscription(
-      timelineLimit: json['timeline_limit'] as int?,
-      requiredState: json['required_state'] != null
-          ? RequiredStateRequest.fromJson(
-              json['required_state'] as Map<String, dynamic>,
-            )
-          : null,
-      includeHeroes: json['include_heroes'] as bool?,
-    );
-  }
 }
 
 /// Extensions configuration
 class SlidingSyncExtensions {
+
+  SlidingSyncExtensions({
+    this.toDevice = false,
+    this.e2ee = false,
+    this.accountData = false,
+    this.receipts = false,
+    this.typing = false,
+    this.presence = false,
+  });
+
+  /// Enable all extensions (except E2EE which is disabled)
+  factory SlidingSyncExtensions.all() {
+    return SlidingSyncExtensions(
+      toDevice: true,
+      accountData: true,
+      receipts: true,
+      typing: true,
+      presence: true,
+    );
+  }
+
+  /// Enable essential extensions only (E2EE disabled)
+  factory SlidingSyncExtensions.essential() {
+    return SlidingSyncExtensions(
+      toDevice: true,
+      accountData: true,
+    );
+  }
+
+  /// No extensions (for testing/compatibility)
+  factory SlidingSyncExtensions.none() {
+    return SlidingSyncExtensions();
+  }
+
+  factory SlidingSyncExtensions.fromJson(Map<String, dynamic> json) {
+    return SlidingSyncExtensions(
+      toDevice: json['to_device']?['enabled'] == true,
+      e2ee: json['e2ee']?['enabled'] == true,
+      accountData: json['account_data']?['enabled'] == true,
+      receipts: json['receipts']?['enabled'] == true,
+      typing: json['typing']?['enabled'] == true,
+      presence: json['presence']?['enabled'] == true,
+    );
+  }
   /// Enable to-device message extension
   final bool toDevice;
 
@@ -215,41 +259,6 @@ class SlidingSyncExtensions {
   /// Enable presence extension
   final bool presence;
 
-  SlidingSyncExtensions({
-    this.toDevice = false,
-    this.e2ee = false,
-    this.accountData = false,
-    this.receipts = false,
-    this.typing = false,
-    this.presence = false,
-  });
-
-  /// Enable all extensions (except E2EE which is disabled)
-  factory SlidingSyncExtensions.all() {
-    return SlidingSyncExtensions(
-      toDevice: true,
-      e2ee: false,
-      accountData: true,
-      receipts: true,
-      typing: true,
-      presence: true,
-    );
-  }
-
-  /// Enable essential extensions only (E2EE disabled)
-  factory SlidingSyncExtensions.essential() {
-    return SlidingSyncExtensions(
-      toDevice: true,
-      e2ee: false,
-      accountData: true,
-    );
-  }
-
-  /// No extensions (for testing/compatibility)
-  factory SlidingSyncExtensions.none() {
-    return SlidingSyncExtensions();
-  }
-
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
 
@@ -261,16 +270,5 @@ class SlidingSyncExtensions {
     if (presence) json['presence'] = {'enabled': true};
 
     return json;
-  }
-
-  factory SlidingSyncExtensions.fromJson(Map<String, dynamic> json) {
-    return SlidingSyncExtensions(
-      toDevice: json['to_device']?['enabled'] == true,
-      e2ee: json['e2ee']?['enabled'] == true,
-      accountData: json['account_data']?['enabled'] == true,
-      receipts: json['receipts']?['enabled'] == true,
-      typing: json['typing']?['enabled'] == true,
-      presence: json['presence']?['enabled'] == true,
-    );
   }
 }

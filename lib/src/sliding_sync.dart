@@ -13,6 +13,14 @@ import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 
 /// Main sliding sync controller
 class SlidingSync {
+
+  SlidingSync({
+    required this.id,
+    required this.client,
+    this.pollTimeout = 30000,
+    this.networkTimeout = 40000,
+    SlidingSyncExtensions? extensions,
+  }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
   /// Unique connection identifier
   final String id;
 
@@ -65,14 +73,6 @@ class SlidingSync {
 
   /// Track which events we've already emitted to avoid duplicates
   final Set<String> _emittedEventIds = {};
-
-  SlidingSync({
-    required this.id,
-    required this.client,
-    this.pollTimeout = 30000,
-    this.networkTimeout = 40000,
-    SlidingSyncExtensions? extensions,
-  }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
 
   /// Creates a builder for configuring sliding sync
   static SlidingSyncBuilder builder({
@@ -191,10 +191,8 @@ class SlidingSync {
             // Create room object with null lastEvent
             room = Room(
               id: roomId,
-              membership: Membership.join,
               client: client,
-            );
-            room.lastEvent =
+            )..lastEvent =
                 null; // Explicitly null to prevent "Refreshing..." placeholder
             client.rooms.add(room);
             // Load room state from database
@@ -223,7 +221,6 @@ class SlidingSync {
               pos: _pos ?? '', // Use empty string if no position yet
               lists: listUpdates,
               rooms: {}, // Rooms are already loaded by Client
-              extensions: null,
             ),
           );
           _hasEmittedFirstUpdate = true;
@@ -346,12 +343,12 @@ class SlidingSync {
         }
 
         // For other Matrix errors, wait before retrying
-        await Future.delayed(Duration(seconds: 3));
+        await Future.delayed(const Duration(seconds: 3));
       } catch (e, stackTrace) {
         Logs().e('[SlidingSync] Error in sync loop: $e');
         Logs().e('[SlidingSync] Stack trace: $stackTrace');
         // For network errors, wait before retrying
-        await Future.delayed(Duration(seconds: 3));
+        await Future.delayed(const Duration(seconds: 3));
       }
     }
   }
@@ -403,25 +400,21 @@ class SlidingSync {
                     final changed = list.applySyncOp(op.range!, op.roomIds!);
                     hasActualChanges = hasActualChanges || changed;
                   }
-                  break;
                 case 'INSERT':
                   if (op.index != null && op.roomId != null) {
                     list.applyInsertOp(op.index!, op.roomId!);
                     hasActualChanges = true; // INSERT always means change
                   }
-                  break;
                 case 'DELETE':
                   if (op.index != null) {
                     list.applyDeleteOp(op.index!);
                     hasActualChanges = true; // DELETE always means change
                   }
-                  break;
                 case 'INVALIDATE':
                   if (op.range != null) {
                     list.applyInvalidateOp(op.range!);
                     hasActualChanges = true; // INVALIDATE always means change
                   }
-                  break;
               }
             }
           }
@@ -457,7 +450,7 @@ class SlidingSync {
 
         // Check if this is truly the first time seeing this room
         final isActuallyInitial =
-            roomData.initial == true && !_initializedRooms.contains(roomId);
+            (roomData.initial ?? false) && !_initializedRooms.contains(roomId);
         if (isActuallyInitial) {
           _initializedRooms.add(roomId);
           Logs().d('[SlidingSync] Room $roomId is initial (first time)');
@@ -591,7 +584,7 @@ class SlidingSync {
           room.setState(
             StrippedStateEvent(
               type: event.type,
-              stateKey: event.stateKey!,
+              stateKey: event.stateKey,
               content: event.content,
               senderId: event.senderId,
             ),
@@ -819,12 +812,12 @@ class SlidingSync {
     final accountData = await client.database.getAccountData();
     final cachedPosEvent = accountData['sliding_sync_pos_$id'];
     if (cachedPosEvent != null && cachedPosEvent.content['pos'] is String) {
-      _pos = cachedPosEvent.content['pos'] as String;
+      _pos = cachedPosEvent.content['pos']! as String;
 
       // Restore list state (similar to Rust SDK's cold_cache)
       if (cachedPosEvent.content['lists'] is Map) {
         final cachedLists =
-            cachedPosEvent.content['lists'] as Map<String, dynamic>;
+            cachedPosEvent.content['lists']! as Map<String, dynamic>;
         for (final entry in cachedLists.entries) {
           final list = _lists[entry.key];
           if (list != null && entry.value is Map) {
@@ -912,6 +905,8 @@ class SlidingSync {
 
 /// Builder for configuring sliding sync
 class SlidingSyncBuilder {
+
+  SlidingSyncBuilder({required this.id, required this.client});
   final String id;
   final Client client;
 
@@ -920,8 +915,6 @@ class SlidingSyncBuilder {
   SlidingSyncExtensions? extensions;
   final List<SlidingSyncList> _lists = [];
   final Map<String, RoomSubscription> _roomSubscriptions = {};
-
-  SlidingSyncBuilder({required this.id, required this.client});
 
   /// Sets the poll timeout
   SlidingSyncBuilder withPollTimeout(int milliseconds) {

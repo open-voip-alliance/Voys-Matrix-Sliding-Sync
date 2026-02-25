@@ -3,15 +3,6 @@
 
 /// Represents the required state configuration for sliding sync
 class RequiredStateRequest {
-  /// State events to include in the response
-  /// Format: [["event_type", "state_key"]]
-  /// Special values:
-  /// - "*" as state_key means all state keys for that event type
-  /// - "$LAZY" for m.room.member means lazy-load member events
-  final List<List<String>> include;
-
-  /// State events to exclude from the response (optional)
-  final List<List<String>>? exclude;
 
   RequiredStateRequest({required this.include, this.exclude}) {
     // Validate input
@@ -59,12 +50,6 @@ class RequiredStateRequest {
     );
   }
 
-  dynamic toJson() {
-    // Matrix.org's implementation expects a plain list, not an object with 'include'
-    // Return just the include list for compatibility
-    return include;
-  }
-
   factory RequiredStateRequest.fromJson(Map<String, dynamic> json) {
     return RequiredStateRequest(
       include: (json['include'] as List<dynamic>)
@@ -78,5 +63,20 @@ class RequiredStateRequest {
                 .toList()
           : null,
     );
+  }
+  /// State events to include in the response
+  /// Format: [["event_type", "state_key"]]
+  /// Special values:
+  /// - "*" as state_key means all state keys for that event type
+  /// - "$LAZY" for m.room.member means lazy-load member events
+  final List<List<String>> include;
+
+  /// State events to exclude from the response (optional)
+  final List<List<String>>? exclude;
+
+  dynamic toJson() {
+    // Matrix.org's implementation expects a plain list, not an object with 'include'
+    // Return just the include list for compatibility
+    return include;
   }
 }
