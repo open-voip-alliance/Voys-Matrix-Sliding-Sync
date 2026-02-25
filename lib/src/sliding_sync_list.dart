@@ -8,7 +8,6 @@ import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 class SlidingSyncList {
 
   SlidingSyncList({
-    required this.name,
     SyncMode syncMode = SyncMode.selective,
     List<List<int>>? ranges,
     int timelineLimit = 1,
@@ -16,14 +15,12 @@ class SlidingSyncList {
     SlidingRoomFilter? filters,
     int batchSize = 20,
     int? maximumNumberOfRooms,
-    bool includeHeroes = false,
   }) : _syncMode = syncMode,
        _timelineLimit = timelineLimit,
        _requiredState = requiredState,
        _filters = filters,
        _batchSize = batchSize,
-       _maximumNumberOfRooms = maximumNumberOfRooms,
-       _includeHeroes = includeHeroes {
+       _maximumNumberOfRooms = maximumNumberOfRooms {
     if (ranges != null) {
       _ranges = ranges;
     } else {
@@ -33,53 +30,41 @@ class SlidingSyncList {
 
   /// Creates a list for all rooms with minimal data
   factory SlidingSyncList.allRoomsMinimal({
-    required String name,
     int batchSize = 20,
   }) {
     return SlidingSyncList(
-      name: name,
       syncMode: SyncMode.growing,
       timelineLimit: 0,
       requiredState: RequiredStateRequest.minimal(),
       batchSize: batchSize,
-      includeHeroes: true,
     );
   }
 
   /// Creates a list for active rooms with timeline
   factory SlidingSyncList.activeRooms({
-    required String name,
     int timelineLimit = 10,
     int batchSize = 20,
   }) {
     return SlidingSyncList(
-      name: name,
       syncMode: SyncMode.paging,
       timelineLimit: timelineLimit,
       requiredState: RequiredStateRequest.full(),
       batchSize: batchSize,
-      includeHeroes: true,
     );
   }
 
   /// Creates a list for a specific space
   factory SlidingSyncList.space({
-    required String name,
     required String spaceId,
     int batchSize = 50,
   }) {
     return SlidingSyncList(
-      name: name,
       syncMode: SyncMode.growing,
       requiredState: RequiredStateRequest.minimal(),
       filters: SlidingRoomFilter.inSpace(spaceId),
       batchSize: batchSize,
-      includeHeroes: true,
     );
   }
-  /// Unique name for this list
-  final String name;
-
   /// Sync mode for this list
   SyncMode _syncMode;
 
@@ -113,9 +98,6 @@ class SlidingSyncList {
 
   /// Maximum number of rooms to fetch
   int? _maximumNumberOfRooms;
-
-  /// Whether to include hero members
-  bool _includeHeroes;
 
   /// Current loading state
   SlidingSyncListLoadingState _state = SlidingSyncListLoadingState.notLoaded;
@@ -271,10 +253,6 @@ class SlidingSyncList {
       if (filterJson.isNotEmpty) {
         json['filters'] = filterJson;
       }
-    }
-
-    if (_includeHeroes) {
-      json['include_heroes'] = true;
     }
 
     return json;

@@ -12,8 +12,7 @@ extension SlidingSyncClientExtensions on Client {
   /// Example usage:
   /// ```dart
   /// final sync = client.createSlidingSync('main')
-  ///   ..addList(SlidingSyncList.allRoomsMinimal(name: 'all_rooms'))
-  ///   ..addList(SlidingSyncList.activeRooms(name: 'active'));
+  ///   ..addList(SlidingSyncList.allRoomsMinimal());
   ///
   /// await sync.startSync();
   /// ```

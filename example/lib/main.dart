@@ -311,7 +311,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     if (!_scrollController.hasClients) return;
 
     final position = _scrollController.position;
-    final list = _slidingSync?.getList('all_rooms');
+    final list = _slidingSync?.list;
 
     if (list == null ||
         list.isFullyLoaded ||
@@ -360,7 +360,6 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
           .withExtensions(SlidingSyncExtensions.all())
           .addList(
             SlidingSyncList(
-              name: 'all_rooms',
               syncMode: SyncMode.growing,
               timelineLimit: 1,
               requiredState: RequiredStateRequest(
@@ -395,7 +394,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         }
 
         // Check if we should load more after this update
-        final list = _slidingSync?.getList('all_rooms');
+        final list = _slidingSync?.list;
         final loadedRoomCount =
             list?.roomIds.where((id) => id.isNotEmpty).length ?? 0;
 
@@ -679,7 +678,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     final client = ref.watch(clientProvider).value!;
 
     // Get the current room count for the title
-    final list = _slidingSync?.getList('all_rooms');
+    final list = _slidingSync?.list;
     final roomCount = (list?.roomIds ?? []).where((id) => id.isNotEmpty).length;
 
     return Scaffold(
@@ -704,7 +703,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final list = _slidingSync!.getList('all_rooms');
+                final list = _slidingSync!.list;
                 // Filter out placeholder room IDs (empty strings)
                 var roomIds = (list?.roomIds ?? [])
                     .where((id) => id.isNotEmpty)

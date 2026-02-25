@@ -8,6 +8,8 @@ import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_update.dart';
 import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 
+const _listName = 'rooms';
+
 /// Main sliding sync controller
 class SlidingSync {
 
@@ -90,41 +92,12 @@ class SlidingSync {
   /// Whether sync is currently running
   bool get isSyncing => _isSyncing;
 
-  /// Named lists
-  Map<String, SlidingSyncList> get lists => Map.unmodifiable(_lists);
+  /// The current sync list
+  SlidingSyncList? get list => _lists[_listName];
 
-  /// Adds a list to the sync
-  SlidingSyncList addList(SlidingSyncList list) {
-    // Validate list count
-    if (_lists.length >= 100) {
-      throw ArgumentError(
-        'Maximum 100 lists allowed per sliding sync instance',
-      );
-    }
-
-    // Validate list name length (64 bytes max)
-    if (list.name.length > 64) {
-      throw ArgumentError('List name exceeds 64 characters');
-    }
-
-    // Check for duplicate names
-    if (_lists.containsKey(list.name)) {
-      throw ArgumentError('List with name ${list.name} already exists');
-    }
-
-    _lists[list.name] = list;
-    return list;
-  }
-
-  /// Removes a list from the sync
-  void removeList(String name) {
-    _lists[name]?.dispose();
-    _lists.remove(name);
-  }
-
-  /// Gets a list by name
-  SlidingSyncList? getList(String name) {
-    return _lists[name];
+  void _addList(SlidingSyncList list) {
+    _lists[_listName]?.dispose();
+    _lists[_listName] = list;
   }
 
   /// Subscribes to specific rooms
@@ -997,7 +970,7 @@ class SlidingSyncBuilder {
 
     // Add lists
     for (final list in _lists) {
-      slidingSync.addList(list);
+      slidingSync._addList(list);
     }
 
     // Add room subscriptions
