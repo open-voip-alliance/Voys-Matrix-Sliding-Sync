@@ -28,13 +28,15 @@
 /// ```
 library;
 
-// Extensions
 export 'src/client_extensions.dart' show SlidingSyncClientExtensions;
 export 'src/models/filters.dart' show SlidingRoomFilter;
-// Configuration
 export 'src/models/request.dart' show RoomSubscription, SlidingSyncExtensions;
 export 'src/models/required_state.dart' show RequiredStateRequest;
-// Core
+export 'src/models/response.dart'
+    show
+        SlidingSyncExtensionResponse,
+        SlidingSyncOperation,
+        SlidingSyncRoomData;
 export 'src/sliding_sync.dart' show SlidingSync, SlidingSyncBuilder;
 export 'src/sliding_sync_list.dart' show SlidingSyncList;
 export 'src/sliding_sync_only_client.dart' show SlidingSyncOnlyClient;
