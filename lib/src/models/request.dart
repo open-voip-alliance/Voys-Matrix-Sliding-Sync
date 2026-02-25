@@ -1,7 +1,6 @@
 // Copyright (c) 2025 Famedly GmbH
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import 'package:voys_matrix_sliding_sync/src/models/filters.dart';
 import 'package:voys_matrix_sliding_sync/src/models/required_state.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
 
@@ -64,89 +63,6 @@ class SlidingSyncRequest {
       if (extensionsJson.isNotEmpty) {
         json['extensions'] = extensionsJson;
       }
-    }
-
-    return json;
-  }
-}
-
-/// Request representation for a sliding sync list
-class SlidingSyncListRequest {
-
-  SlidingSyncListRequest({
-    this.ranges,
-    this.timelineLimit,
-    this.requiredState,
-    this.filters,
-    this.sortBy,
-    this.bumpEventTypes,
-    this.includeHeroes,
-  });
-
-  factory SlidingSyncListRequest.fromJson(Map<String, dynamic> json) {
-    return SlidingSyncListRequest(
-      ranges: (json['ranges'] as List<dynamic>?)
-          ?.map((e) => (e as List<dynamic>).map((n) => n as int).toList())
-          .toList(),
-      timelineLimit: json['timeline_limit'] as int?,
-      requiredState: json['required_state'] != null
-          ? RequiredStateRequest.fromJson(
-              json['required_state'] as Map<String, dynamic>,
-            )
-          : null,
-      filters: json['filters'] != null
-          ? SlidingRoomFilter.fromJson(json['filters'] as Map<String, dynamic>)
-          : null,
-      sortBy: json['sort_by'] as String?,
-      includeHeroes: json['include_heroes'] as bool?,
-    );
-  }
-  /// Ranges to request (e.g., [[0, 19], [100, 119]])
-  final List<List<int>>? ranges;
-
-  /// Maximum timeline events per room
-  final int? timelineLimit;
-
-  /// Required state events
-  final RequiredStateRequest? requiredState;
-
-  /// Room filters
-  final SlidingRoomFilter? filters;
-
-  /// Sort order (default is by bump_stamp)
-  final String? sortBy;
-
-  /// Event types that affect the bump_stamp ordering
-  final List<String>? bumpEventTypes;
-
-  /// Include hero member info for room name calculation
-  final bool? includeHeroes;
-
-  Map<String, dynamic> toJson() {
-    final json = <String, dynamic>{};
-
-    // Request uses 'ranges' (plural array of arrays) even though MSC4186 simplified
-    // the response to use 'range' (singular) in operations
-    if (ranges != null && ranges!.isNotEmpty) {
-      json['ranges'] = ranges;
-    }
-    if (timelineLimit != null) {
-      json['timeline_limit'] = timelineLimit;
-    }
-    if (requiredState != null) {
-      json['required_state'] = requiredState!.toJson();
-    }
-    if (filters != null) {
-      json['filters'] = filters!.toJson();
-    }
-    if (sortBy != null) {
-      json['sort_by'] = sortBy;
-    }
-    if (bumpEventTypes != null && bumpEventTypes!.isNotEmpty) {
-      json['bump_event_types'] = bumpEventTypes;
-    }
-    if (includeHeroes != null) {
-      json['include_heroes'] = includeHeroes;
     }
 
     return json;
