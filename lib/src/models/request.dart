@@ -44,6 +44,7 @@ class SlidingSyncRequest {
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
 
+    if (connId != null) json['conn_id'] = connId;
     if (pos != null) json['pos'] = pos;
     // MSC4186: timeout is in request body (only effective when pos is set)
     if (timeout != null) json['timeout'] = timeout;
