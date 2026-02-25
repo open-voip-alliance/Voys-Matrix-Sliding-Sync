@@ -79,17 +79,6 @@ class RoomSubscription {
     this.includeHeroes,
   });
 
-  factory RoomSubscription.fromJson(Map<String, dynamic> json) {
-    return RoomSubscription(
-      timelineLimit: json['timeline_limit'] as int?,
-      requiredState: json['required_state'] != null
-          ? RequiredStateRequest.fromJson(
-              json['required_state'] as Map<String, dynamic>,
-            )
-          : null,
-      includeHeroes: json['include_heroes'] as bool?,
-    );
-  }
   /// Timeline event limit
   final int? timelineLimit;
 
@@ -152,16 +141,6 @@ class SlidingSyncExtensions {
     return SlidingSyncExtensions();
   }
 
-  factory SlidingSyncExtensions.fromJson(Map<String, dynamic> json) {
-    return SlidingSyncExtensions(
-      toDevice: json['to_device']?['enabled'] == true,
-      e2ee: json['e2ee']?['enabled'] == true,
-      accountData: json['account_data']?['enabled'] == true,
-      receipts: json['receipts']?['enabled'] == true,
-      typing: json['typing']?['enabled'] == true,
-      presence: json['presence']?['enabled'] == true,
-    );
-  }
   /// Enable to-device message extension
   final bool toDevice;
 

@@ -54,27 +54,6 @@ class RequiredStateRequest {
     );
   }
 
-  factory RequiredStateRequest.fromJson(Map<String, dynamic> json) {
-    List<String> parseElement(dynamic e) {
-      final map = e as Map<String, dynamic>;
-      return [
-        if (map['type'] != null) map['type'] as String,
-        if (map['state_key'] != null) map['state_key'] as String,
-      ];
-    }
-
-    return RequiredStateRequest(
-      include: (json['include'] as List<dynamic>?)
-              ?.map(parseElement)
-              .toList() ??
-          [],
-      exclude: (json['exclude'] as List<dynamic>?)
-          ?.map(parseElement)
-          .toList(),
-      lazyMembers: json['lazy_members'] as bool?,
-    );
-  }
-
   /// State events to include in the response.
   /// Format: [["event_type", "state_key"]]
   /// Special values:

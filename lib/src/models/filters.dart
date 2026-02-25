@@ -61,29 +61,6 @@ class SlidingRoomFilter {
     return SlidingRoomFilter(isEncrypted: false);
   }
 
-  factory SlidingRoomFilter.fromJson(Map<String, dynamic> json) {
-    return SlidingRoomFilter(
-      isInvited: json['is_invited'] as bool?,
-      isKnocked: json['is_knocked'] as bool?,
-      isDm: json['is_dm'] as bool?,
-      isEncrypted: json['is_encrypted'] as bool?,
-      spaces: (json['spaces'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
-      roomTypes: (json['room_types'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
-      notRoomTypes: (json['not_room_types'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
-      roomNameLike: json['room_name_like'] as String?,
-      tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
-      notTags: (json['not_tags'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
-    );
-  }
-
   /// Filter by invitation status
   final bool? isInvited;
 
