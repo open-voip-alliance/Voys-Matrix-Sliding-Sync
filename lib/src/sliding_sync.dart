@@ -562,6 +562,58 @@ class SlidingSync {
       );
     }
 
+    if (data.canonicalAlias != null) {
+      room.setState(
+        StrippedStateEvent(
+          type: 'm.room.canonical_alias',
+          stateKey: '',
+          content: {'alias': data.canonicalAlias},
+          senderId: '',
+        ),
+      );
+    }
+
+    if (data.joinRule != null) {
+      room.setState(
+        StrippedStateEvent(
+          type: 'm.room.join_rules',
+          stateKey: '',
+          content: {'join_rule': data.joinRule},
+          senderId: '',
+        ),
+      );
+    }
+
+    // roomType mirrors m.room.create content['type']. Applied as a minimal
+    // placeholder; a full m.room.create from requiredState will override this.
+    if (data.roomType != null) {
+      room.setState(
+        StrippedStateEvent(
+          type: 'm.room.create',
+          stateKey: '',
+          content: {'type': data.roomType},
+          senderId: '',
+        ),
+      );
+    }
+
+    // encrypted is a convenience flag. Apply a minimal m.room.encryption event
+    // so the SDK treats the room as encrypted; the full event from requiredState
+    // will override this if present.
+    // Note: dmTargets and heroCount are intentionally not applied here.
+    // dmTargets requires updating m.direct account data (not done here), and
+    // heroCount has no corresponding field in the SDK's RoomSummary.
+    if (data.encrypted ?? false) {
+      room.setState(
+        StrippedStateEvent(
+          type: 'm.room.encryption',
+          stateKey: '',
+          content: {},
+          senderId: '',
+        ),
+      );
+    }
+
     if (data.highlightCount != null) {
       room.highlightCount = data.highlightCount!;
     }
