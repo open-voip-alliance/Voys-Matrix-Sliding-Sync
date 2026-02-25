@@ -1,6 +1,3 @@
-// Copyright (c) 2025 Famedly GmbH
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import 'package:voys_matrix_sliding_sync/src/models/response.dart';
 
 /// Update from a sliding sync operation

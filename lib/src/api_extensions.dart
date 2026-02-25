@@ -1,6 +1,3 @@
-// Copyright (c) 2025 Famedly GmbH
-// SPDX-License-Identifier: AGPL-3.0-only
-
 import 'package:matrix/matrix_api_lite.dart';
 
 /// Extension methods for Matrix API to support sliding sync endpoints

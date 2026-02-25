@@ -1,6 +1,3 @@
-// Copyright (c) 2025 Famedly GmbH
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /// A sliding sync implementation for Matrix (MSC4186).
 ///
 /// This library provides efficient synchronization for Matrix chat clients

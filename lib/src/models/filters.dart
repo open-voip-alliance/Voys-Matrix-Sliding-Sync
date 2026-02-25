@@ -1,6 +1,3 @@
-// Copyright (c) 2025 Famedly GmbH
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /// Filters for sliding sync room lists
 class SlidingRoomFilter {
   SlidingRoomFilter({

@@ -1,6 +1,3 @@
-// Copyright (c) 2025 Famedly GmbH
-// SPDX-License-Identifier: AGPL-3.0-only
-
 /// Sync mode for sliding sync lists
 enum SyncMode {
   /// Client specifies exact ranges to fetch
