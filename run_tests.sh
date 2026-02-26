@@ -23,7 +23,5 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-dart pub global activate junitreport
-
 ACCESS_TOKEN="$TOKEN" \
-  dart test test/tests.dart --reporter json | tojunit --output test-results.xml
+  dart test test/tests.dart --file-reporter="json:test-results.json"
