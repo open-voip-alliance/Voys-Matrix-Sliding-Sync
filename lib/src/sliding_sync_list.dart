@@ -27,44 +27,6 @@ class SlidingSyncList {
     }
   }
 
-  /// Creates a list for all rooms with minimal data
-  factory SlidingSyncList.allRoomsMinimal({
-    int batchSize = 20,
-  }) {
-    return SlidingSyncList(
-      syncMode: SyncMode.growing,
-      timelineLimit: 0,
-      requiredState: RequiredStateRequest.minimal(),
-      batchSize: batchSize,
-    );
-  }
-
-  /// Creates a list for active rooms with timeline
-  factory SlidingSyncList.activeRooms({
-    int timelineLimit = 10,
-    int batchSize = 20,
-  }) {
-    return SlidingSyncList(
-      syncMode: SyncMode.paging,
-      timelineLimit: timelineLimit,
-      requiredState: RequiredStateRequest.full(),
-      batchSize: batchSize,
-    );
-  }
-
-  /// Creates a list for a specific space
-  factory SlidingSyncList.space({
-    required String spaceId,
-    int batchSize = 50,
-  }) {
-    return SlidingSyncList(
-      syncMode: SyncMode.growing,
-      requiredState: RequiredStateRequest.minimal(),
-      filters: SlidingRoomFilter.inSpace(spaceId),
-      batchSize: batchSize,
-    );
-  }
-
   /// Sync mode for this list
   SyncMode _syncMode;
 
@@ -79,32 +41,28 @@ class SlidingSyncList {
   int? _totalRoomCount;
 
   /// Timeline limit for rooms in this list
-  int _timelineLimit;
+  final int _timelineLimit;
 
   /// Required state configuration
-  RequiredStateRequest? _requiredState;
+  final RequiredStateRequest? _requiredState;
 
   /// Room filters
-  SlidingRoomFilter? _filters;
+  final SlidingRoomFilter? _filters;
 
   /// Current ranges being synced
   List<List<int>> _ranges = [];
 
   /// Batch size for paging/growing modes
-  int _batchSize;
+  final int _batchSize;
 
   /// Current position for paging mode
   int _currentPageStart = 0;
 
   /// Maximum number of rooms to fetch
-  int? _maximumNumberOfRooms;
+  final int? _maximumNumberOfRooms;
 
   /// Current loading state
   SlidingSyncListLoadingState _state = SlidingSyncListLoadingState.notLoaded;
-
-  /// Stream of state changes
-  Stream<SlidingSyncListLoadingState> get stateStream =>
-      _stateController.stream;
 
   /// Current state
   SlidingSyncListLoadingState get state => _state;
@@ -114,18 +72,6 @@ class SlidingSyncList {
 
   /// Total number of rooms (if known)
   int? get totalRoomCount => _totalRoomCount;
-
-  /// Sync mode
-  SyncMode get syncMode => _syncMode;
-
-  /// Timeline limit
-  int get timelineLimit => _timelineLimit;
-
-  /// Required state
-  RequiredStateRequest? get requiredState => _requiredState;
-
-  /// Filters
-  SlidingRoomFilter? get filters => _filters;
 
   /// Current ranges
   List<List<int>> get ranges => List.unmodifiable(_ranges);
@@ -142,42 +88,12 @@ class SlidingSyncList {
     }
   }
 
-  /// Updates the timeline limit
-  void setTimelineLimit(int limit) {
-    _timelineLimit = limit;
-  }
-
-  /// Updates the required state
-  void setRequiredState(RequiredStateRequest? requiredState) {
-    _requiredState = requiredState;
-  }
-
-  /// Updates the filters
-  void setFilters(SlidingRoomFilter? filters) {
-    _filters = filters;
-    // Reset state when filters change
-    _state = SlidingSyncListLoadingState.notLoaded;
-    _updateState(_state);
-    _roomIds.clear();
-    _totalRoomCount = null;
-    _currentPageStart = 0;
-    _ranges = _generateRanges();
-  }
-
   /// Updates the ranges
   /// For selective mode: sets the exact ranges to maintain
   /// For growing mode: restores the cached range to continue from where it left off
   void setRanges(List<List<int>> ranges) {
     if (_syncMode == SyncMode.selective || _syncMode == SyncMode.growing) {
       _ranges = ranges;
-    }
-  }
-
-  /// Loads the next page (for paging mode)
-  void loadNextPage() {
-    if (_syncMode == SyncMode.paging) {
-      _currentPageStart += _batchSize;
-      _ranges = _generateRanges();
     }
   }
 
@@ -210,7 +126,7 @@ class SlidingSyncList {
         final start = _currentPageStart;
         var end = start + _batchSize - 1;
         if (_maximumNumberOfRooms != null) {
-          end = end.clamp(0, _maximumNumberOfRooms! - 1);
+          end = end.clamp(0, _maximumNumberOfRooms - 1);
         }
         if (start > end) {
           return [];
@@ -226,7 +142,7 @@ class SlidingSyncList {
             : _ranges.last[1] + _batchSize;
         var end = currentEnd;
         if (_maximumNumberOfRooms != null) {
-          end = end.clamp(0, _maximumNumberOfRooms! - 1);
+          end = end.clamp(0, _maximumNumberOfRooms - 1);
         }
         return [
           [0, end],
@@ -245,11 +161,11 @@ class SlidingSyncList {
     json['timeline_limit'] = _timelineLimit;
 
     if (_requiredState != null) {
-      json['required_state'] = _requiredState!.toJson();
+      json['required_state'] = _requiredState.toJson();
     }
 
     if (_filters != null) {
-      final filterJson = _filters!.toJson();
+      final filterJson = _filters.toJson();
       if (filterJson.isNotEmpty) {
         json['filters'] = filterJson;
       }

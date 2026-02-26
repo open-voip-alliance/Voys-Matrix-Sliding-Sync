@@ -15,15 +15,13 @@ const _connId = 'sliding_sync';
 class SlidingSync {
   SlidingSync({
     required this.client,
-    this.pollTimeout = 30000,
     SlidingSyncExtensions? extensions,
   }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
 
   /// The client instance
   final Client client;
 
-  /// Long-poll timeout in milliseconds
-  final int pollTimeout;
+  static const int _pollTimeout = 30000;
 
   /// Current position token
   String? _pos;
@@ -32,7 +30,7 @@ class SlidingSync {
   final Map<String, SlidingSyncList> _lists = {};
 
   /// Extensions configuration
-  SlidingSyncExtensions _extensions;
+  final SlidingSyncExtensions _extensions;
 
   /// Whether sync is currently running
   bool _isSyncing = false;
@@ -113,11 +111,6 @@ class SlidingSync {
     }
   }
 
-  /// Sets the extensions to use
-  void setExtensions(SlidingSyncExtensions extensions) {
-    _extensions = extensions;
-  }
-
   /// Starts the sync loop
   Future<void> startSync() async {
     if (_isSyncing) {
@@ -127,7 +120,6 @@ class SlidingSync {
     Logs().i('[SlidingSync] Starting sync loop (id: $_connId)');
     _isSyncing = true;
     _stopCompleter = null;
-    _updateStatus(SlidingSyncStatus.waitingForResponse);
 
     try {
       // Load cached position if available
@@ -215,41 +207,13 @@ class SlidingSync {
     Logs().i('[SlidingSync] Sync loop stopped (id: $_connId)');
   }
 
-  /// Performs a single sync request
-  Future<SlidingSyncUpdate> syncOnce() async {
-    final request = _buildRequest();
-    final requestJson = request.toJson();
-
-    _updateStatus(SlidingSyncStatus.waitingForResponse);
-
-    try {
-      final response = await client.slidingSync(requestJson);
-
-      _updateStatus(SlidingSyncStatus.processing);
-
-      final slidingSyncResponse = SlidingSyncResponse.fromJson(response);
-      final update = await _processResponse(slidingSyncResponse);
-
-      _updateStatus(SlidingSyncStatus.finished);
-
-      return update;
-    } catch (e) {
-      _updateStatus(SlidingSyncStatus.error);
-      rethrow;
-    }
-  }
-
-  /// Expires the current session (clears position)
-  Future<void> expireSession() async {
+  Future<void> _expireSession() async {
     _pos = null;
     await _saveCachedPosition();
 
-    // Reset all lists
     for (final list in _lists.values) {
       list.reset();
     }
-
-    // Active room subscriptions are already sent on every request, nothing to reset.
   }
 
   /// The main sync loop
@@ -258,7 +222,14 @@ class SlidingSync {
 
     while (_isSyncing && _stopCompleter == null) {
       try {
-        final update = await syncOnce();
+        _updateStatus(SlidingSyncStatus.waitingForResponse);
+        final response = await client.slidingSync(_buildRequest().toJson());
+        _updateStatus(SlidingSyncStatus.processing);
+        final update = await _processResponse(
+          SlidingSyncResponse.fromJson(response),
+        );
+        _updateStatus(SlidingSyncStatus.finished);
+
         final requestDuration = DateTime.now().difference(lastRequestTime);
 
         // Only emit update if something actually changed, or if this is the first update
@@ -295,18 +266,20 @@ class SlidingSync {
           break;
         }
       } on MatrixException catch (e) {
+        _updateStatus(SlidingSyncStatus.error);
         Logs().e(
           '[SlidingSync] Matrix error in sync loop: ${e.errcode} - ${e.error}',
         );
         if (e.errcode == 'M_UNKNOWN_POS') {
           // Position expired, reset and continue
-          await expireSession();
+          await _expireSession();
           continue;
         }
 
         // For other Matrix errors, wait before retrying
         await Future.delayed(const Duration(seconds: 3));
       } catch (e, stackTrace) {
+        _updateStatus(SlidingSyncStatus.error);
         Logs().e('[SlidingSync] Error in sync loop: $e');
         Logs().e('[SlidingSync] Stack trace: $stackTrace');
         // For network errors, wait before retrying
@@ -326,7 +299,7 @@ class SlidingSync {
     return SlidingSyncRequest(
       connId: _connId,
       pos: _pos,
-      timeout: pollTimeout,
+      timeout: _pollTimeout,
       setPresence: client.syncPresence?.toString().split('.').last,
       lists: _lists,
       roomSubscriptions: _activeRoomSubscriptions.isNotEmpty
@@ -924,16 +897,8 @@ class SlidingSyncBuilder {
   SlidingSyncBuilder({required this.client});
   final Client client;
 
-  int pollTimeout = 30000;
   SlidingSyncExtensions? extensions;
   final List<SlidingSyncList> _lists = [];
-  final Map<String, RoomSubscription> _roomSubscriptions = {};
-
-  /// Sets the poll timeout
-  SlidingSyncBuilder withPollTimeout(int milliseconds) {
-    pollTimeout = milliseconds;
-    return this;
-  }
 
   /// Sets the extensions
   SlidingSyncBuilder withExtensions(SlidingSyncExtensions ext) {
@@ -947,28 +912,15 @@ class SlidingSyncBuilder {
     return this;
   }
 
-  /// Subscribes to rooms
-  SlidingSyncBuilder subscribeToRooms(Map<String, RoomSubscription> subs) {
-    _roomSubscriptions.addAll(subs);
-    return this;
-  }
-
   /// Builds the sliding sync instance
   SlidingSync build() {
     final slidingSync = SlidingSync(
       client: client,
-      pollTimeout: pollTimeout,
       extensions: extensions,
     );
 
-    // Add lists
     for (final list in _lists) {
       slidingSync._addList(list);
-    }
-
-    // Add room subscriptions
-    if (_roomSubscriptions.isNotEmpty) {
-      slidingSync.subscribeToRooms(_roomSubscriptions);
     }
 
     return slidingSync;

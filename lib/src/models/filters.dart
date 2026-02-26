@@ -13,49 +13,9 @@ class SlidingRoomFilter {
     this.notTags,
   });
 
-  /// Creates a filter for all rooms
-  factory SlidingRoomFilter.all() {
-    return SlidingRoomFilter();
-  }
-
-  /// Creates a filter for direct messages only
-  factory SlidingRoomFilter.directMessages() {
-    return SlidingRoomFilter(isDm: true);
-  }
-
-  /// Creates a filter for group rooms only
-  factory SlidingRoomFilter.groups() {
-    return SlidingRoomFilter(isDm: false);
-  }
-
-  /// Creates a filter for invitations
-  factory SlidingRoomFilter.invitations() {
-    return SlidingRoomFilter(isInvited: true);
-  }
-
-  /// Creates a filter for spaces
-  factory SlidingRoomFilter.spaces() {
-    return SlidingRoomFilter(roomTypes: ['m.space']);
-  }
-
-  /// Creates a filter for favorite rooms
-  factory SlidingRoomFilter.favorites() {
-    return SlidingRoomFilter(tags: ['m.favourite']);
-  }
-
   /// Creates a filter for rooms within a specific space
   factory SlidingRoomFilter.inSpace(String spaceId) {
     return SlidingRoomFilter(spaces: [spaceId]);
-  }
-
-  /// Creates a filter for encrypted rooms only
-  factory SlidingRoomFilter.encryptedRooms() {
-    return SlidingRoomFilter(isEncrypted: true);
-  }
-
-  /// Creates a filter for unencrypted rooms only
-  factory SlidingRoomFilter.unencryptedRooms() {
-    return SlidingRoomFilter(isEncrypted: false);
   }
 
   /// Filter by invitation status

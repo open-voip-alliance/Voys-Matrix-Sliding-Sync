@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:matrix/matrix.dart';
@@ -59,7 +60,6 @@ void main() {
                 batchSize: 5,
               ),
             )
-            .withPollTimeout(0)
             .build();
   });
 
@@ -69,28 +69,42 @@ void main() {
   });
 
   test('loads rooms on first sync', () async {
-    await slidingSync.syncOnce();
+    unawaited(slidingSync.startSync());
+    await slidingSync.updateStream.first;
+    await slidingSync.stopSync();
     expect(slidingSync.list!.roomIds, isNotEmpty);
   });
 
   test('loads more rooms after loadMore()', () async {
+    // Start sync and wait for first cycle to establish baseline state.
+    // loadMore() must be called while sync is running — calling it before
+    // startSync() would have its ranges overwritten by _loadCachedPosition().
+    unawaited(slidingSync.startSync());
+    await slidingSync.statusStream
+        .firstWhere((s) => s == SlidingSyncStatus.finished);
+
     final initialCount = slidingSync.list!.roomIds.length;
 
     if ((slidingSync.list!.totalRoomCount ?? initialCount) <= 5) {
+      await slidingSync.stopSync();
       markTestSkipped('Account needs more than 5 rooms for this test');
       return;
     }
 
+    // Extend the range while sync is running, then wait for the next cycle.
     slidingSync.list!.loadMore();
-    await slidingSync.syncOnce();
+    await slidingSync.statusStream
+        .firstWhere((s) => s == SlidingSyncStatus.finished);
+    await slidingSync.stopSync();
     expect(slidingSync.list!.roomIds.length, greaterThan(initialCount));
   });
 
-  test('statusStream emits expected transitions during syncOnce', () async {
+  test('statusStream emits expected transitions', () async {
     final statusesFuture = slidingSync.statusStream.take(3).toList();
 
-    await slidingSync.syncOnce();
+    unawaited(slidingSync.startSync());
     final statuses = await statusesFuture;
+    await slidingSync.stopSync();
 
     expect(statuses, equals([
       SlidingSyncStatus.waitingForResponse,

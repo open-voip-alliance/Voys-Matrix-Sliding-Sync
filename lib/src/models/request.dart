@@ -131,11 +131,6 @@ class SlidingSyncExtensions {
     );
   }
 
-  /// No extensions (for testing/compatibility)
-  factory SlidingSyncExtensions.none() {
-    return SlidingSyncExtensions();
-  }
-
   /// Enable to-device message extension
   final bool toDevice;
 
