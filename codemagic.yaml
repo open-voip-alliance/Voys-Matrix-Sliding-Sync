@@ -18,8 +18,7 @@ workflows:
         script: dart pub get
       - name: Running tests
         script: ./run_tests.sh --token $VOYS_MATRIX_SLIDING_SYNC_VOIPGRID_API_TOKEN
-    test_report_paths:
-      - test-results.xml
+        test_report: test-results.xml
     publishing:
       slack:
         channel: '#vialer_mobile_ci'
