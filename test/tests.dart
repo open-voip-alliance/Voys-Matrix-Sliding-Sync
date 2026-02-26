@@ -85,4 +85,17 @@ void main() {
     await slidingSync.syncOnce();
     expect(slidingSync.list!.roomIds.length, greaterThan(initialCount));
   });
+
+  test('statusStream emits expected transitions during syncOnce', () async {
+    final statusesFuture = slidingSync.statusStream.take(3).toList();
+
+    await slidingSync.syncOnce();
+    final statuses = await statusesFuture;
+
+    expect(statuses, equals([
+      SlidingSyncStatus.waitingForResponse,
+      SlidingSyncStatus.processing,
+      SlidingSyncStatus.finished,
+    ]));
+  });
 }
