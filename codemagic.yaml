@@ -6,7 +6,6 @@ workflows:
     environment:
       groups:
         - voys_matrix_sliding_sync
-      dart: stable
     triggering:
       cancel_previous_builds: true
       events:
