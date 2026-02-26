@@ -137,4 +137,4 @@ app.*.symbols
 
 # FVM Version Cache
 .fvm/
-**/test_results.json
+**/test-results.json
