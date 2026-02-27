@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:matrix/matrix.dart';
 import 'package:voys_matrix_sliding_sync/src/api_extensions.dart';
 import 'package:voys_matrix_sliding_sync/src/models/request.dart';
+import 'package:voys_matrix_sliding_sync/src/models/required_state.dart';
 import 'package:voys_matrix_sliding_sync/src/models/response.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_update.dart';
@@ -109,6 +110,50 @@ class SlidingSync {
     for (final roomId in roomIds) {
       _activeRoomSubscriptions.remove(roomId);
     }
+  }
+
+  /// Loads a specific room by ID, subscribing to it if not already initialized.
+  ///
+  /// If the room has already been initialized via sliding sync, returns it
+  /// immediately. Otherwise, adds a room subscription and waits for the server
+  /// to deliver the room data on the next sync cycle.
+  ///
+  /// [subscription] controls the timeline limit and required state requested
+  /// from the server. Defaults to a 20-event timeline.
+  ///
+  /// Throws [TimeoutException] if data does not arrive within [timeout].
+  /// Throws [StateError] if the sync loop is not running.
+  Future<Room> loadRoom(
+    String roomId, {
+    RoomSubscription? subscription,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final existing = client.getRoomById(roomId);
+    if (existing != null && _initializedRooms.contains(roomId)) {
+      return existing;
+    }
+
+    if (!_isSyncing) {
+      throw StateError('Cannot load room: sync loop is not running');
+    }
+
+    subscribeToRooms({
+      roomId: subscription ??
+          RoomSubscription(
+            timelineLimit: 5,
+            requiredState: RequiredStateRequest.minimal(),
+          ),
+    });
+
+    await updateStream
+        .firstWhere((update) => update.rooms.containsKey(roomId))
+        .timeout(timeout);
+
+    final room = client.getRoomById(roomId);
+    if (room == null) {
+      throw StateError('Room $roomId not found after subscription');
+    }
+    return room;
   }
 
   /// Starts the sync loop
