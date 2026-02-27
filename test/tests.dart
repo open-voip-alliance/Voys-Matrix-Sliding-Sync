@@ -116,4 +116,61 @@ void main() {
       ]),
     );
   });
+
+  test('loadRoom throws StateError when sync is not running', () {
+    expect(
+      slidingSync.loadRoom('!nonexistent:matrix.example.com'),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('loadRoom returns already-initialized room immediately', () async {
+    unawaited(slidingSync.startSync());
+    await slidingSync.updateStream.first;
+    final roomId = slidingSync.list!.roomIds.first;
+    await slidingSync.stopSync();
+
+    // Room is already in _initializedRooms — returns immediately even if
+    // sync is stopped, without needing to wait for the server.
+    final room = await slidingSync.loadRoom(roomId);
+    expect(room.id, equals(roomId));
+  });
+
+  test('loadRoom subscribes and loads a room not yet in the list', () async {
+    // Start sync and wait for the first cycle to complete so we know which
+    // rooms are already loaded and have a valid pos token.
+    unawaited(slidingSync.startSync());
+    await slidingSync.statusStream.firstWhere(
+      (s) => s == SlidingSyncStatus.finished,
+    );
+
+    // Ask the server for all joined rooms and find one not yet delivered by
+    // the sliding sync list.
+    final allJoinedRoomIds = await client.getJoinedRooms();
+    final listRoomIds = slidingSync.list!.roomIds.toSet();
+    final candidates = allJoinedRoomIds.where(
+      (id) => !listRoomIds.contains(id),
+    );
+
+    if (candidates.isEmpty) {
+      await slidingSync.stopSync();
+      markTestSkipped('All joined rooms are already in the sliding sync list');
+      return;
+    }
+
+    final unloadedRoomId = candidates.first;
+
+    // loadRoom subscribes and waits for the server to deliver the room data
+    // on the next sync cycle.
+    final room = await slidingSync.loadRoom(
+      unloadedRoomId,
+      subscription: RoomSubscription(
+        timelineLimit: 5,
+        requiredState: RequiredStateRequest.minimal(),
+      ),
+    );
+    await slidingSync.stopSync();
+
+    expect(room.id, equals(unloadedRoomId));
+  });
 }

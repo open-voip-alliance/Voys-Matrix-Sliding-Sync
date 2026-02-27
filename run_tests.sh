@@ -23,12 +23,16 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-dart pub global activate junitreport
-export PATH="$PATH:$HOME/.pub-cache/bin"
+if [[ "$CI" == "true" ]]; then
+  dart pub global activate junitreport
+  export PATH="$PATH:$HOME/.pub-cache/bin"
 
-ACCESS_TOKEN="$TOKEN" \
-  dart test test/tests.dart --reporter json | \
-  tojunit | \
-  sed 's/&#x1[Bb];\[[0-9;]*[a-zA-Z]//g; s/&#x1[Bb];//g' > test-results.xml
+  ACCESS_TOKEN="$TOKEN" \
+    dart test test/tests.dart --reporter json | \
+    tojunit | \
+    sed 's/&#x1[Bb];\[[0-9;]*[a-zA-Z]//g; s/&#x1[Bb];//g' > test-results.xml
 
-exit "${PIPESTATUS[0]}"
+  exit "${PIPESTATUS[0]}"
+else
+  ACCESS_TOKEN="$TOKEN" dart test test/tests.dart
+fi
