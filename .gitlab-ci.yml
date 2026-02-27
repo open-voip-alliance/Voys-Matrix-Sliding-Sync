@@ -1,0 +1,15 @@
+stages:
+  - test
+
+tests:
+  stage: test
+  image: dart:stable
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - dart pub get
+    - ./run_tests.sh --token $VOYS_MATRIX_SLIDING_SYNC_VOIPGRID_API_TOKEN
+  artifacts:
+    when: always
+    reports:
+      junit: test-results.json
