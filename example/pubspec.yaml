@@ -12,7 +12,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
   http: ^1.2.0
   http_interceptor: ^2.0.0
-  matrix: ^4.1.0
+  matrix: ^6.1.1
   talker: ^5.1.12
   talker_http_logger: ^5.1.12
   voys_matrix_sliding_sync:
