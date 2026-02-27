@@ -50,17 +50,16 @@ void main() {
       identifier: AuthenticationUserIdentifier(user: 'test user'),
     );
 
-    slidingSync =
-        SlidingSync.builder(client: client)
-            .addList(
-              SlidingSyncList(
-                syncMode: SyncMode.growing,
-                timelineLimit: 0,
-                requiredState: RequiredStateRequest.minimal(),
-                batchSize: 5,
-              ),
-            )
-            .build();
+    slidingSync = SlidingSync.builder(client: client)
+        .addList(
+          SlidingSyncList(
+            syncMode: SyncMode.growing,
+            timelineLimit: 0,
+            requiredState: RequiredStateRequest.minimal(),
+            batchSize: 5,
+          ),
+        )
+        .build();
   });
 
   tearDownAll(() async {
@@ -80,8 +79,9 @@ void main() {
     // loadMore() must be called while sync is running — calling it before
     // startSync() would have its ranges overwritten by _loadCachedPosition().
     unawaited(slidingSync.startSync());
-    await slidingSync.statusStream
-        .firstWhere((s) => s == SlidingSyncStatus.finished);
+    await slidingSync.statusStream.firstWhere(
+      (s) => s == SlidingSyncStatus.finished,
+    );
 
     final initialCount = slidingSync.list!.roomIds.length;
 
@@ -93,8 +93,9 @@ void main() {
 
     // Extend the range while sync is running, then wait for the next cycle.
     slidingSync.list!.loadMore();
-    await slidingSync.statusStream
-        .firstWhere((s) => s == SlidingSyncStatus.finished);
+    await slidingSync.statusStream.firstWhere(
+      (s) => s == SlidingSyncStatus.finished,
+    );
     await slidingSync.stopSync();
     expect(slidingSync.list!.roomIds.length, greaterThan(initialCount));
   });
@@ -106,10 +107,13 @@ void main() {
     final statuses = await statusesFuture;
     await slidingSync.stopSync();
 
-    expect(statuses, equals([
-      SlidingSyncStatus.waitingForResponse,
-      SlidingSyncStatus.processing,
-      SlidingSyncStatus.finished,
-    ]));
+    expect(
+      statuses,
+      equals([
+        SlidingSyncStatus.waitingForResponse,
+        SlidingSyncStatus.processing,
+        SlidingSyncStatus.finished,
+      ]),
+    );
   });
 }

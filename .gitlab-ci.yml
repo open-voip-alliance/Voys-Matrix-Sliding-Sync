@@ -1,13 +1,31 @@
 stages:
+  - format
+  - analyze
   - test
 
-tests:
-  stage: test
-  image: dart:stable
+.base:
+  image: ghcr.io/cirruslabs/flutter:latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - flutter pub get
+
+format:
+  extends: .base
+  stage: format
   script:
-    - dart pub get
+    - dart format . --output=none --set-exit-if-changed
+
+analyze:
+  extends: .base
+  stage: analyze
+  script:
+    - dart analyze --fatal-infos
+
+tests:
+  extends: .base
+  stage: test
+  script:
     - ./run_tests.sh --token $VOYS_MATRIX_SLIDING_SYNC_VOIPGRID_API_TOKEN
   artifacts:
     when: always
