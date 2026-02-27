@@ -30,4 +30,4 @@ tests:
   artifacts:
     when: always
     reports:
-      junit: test-results.json
+      junit: test-results.xml
