@@ -148,7 +148,9 @@ void main() {
     // the sliding sync list.
     final allJoinedRoomIds = await client.getJoinedRooms();
     final listRoomIds = slidingSync.list!.roomIds.toSet();
-    final candidates = allJoinedRoomIds.where((id) => !listRoomIds.contains(id));
+    final candidates = allJoinedRoomIds.where(
+      (id) => !listRoomIds.contains(id),
+    );
 
     if (candidates.isEmpty) {
       await slidingSync.stopSync();

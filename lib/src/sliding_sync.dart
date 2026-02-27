@@ -138,7 +138,8 @@ class SlidingSync {
     }
 
     subscribeToRooms({
-      roomId: subscription ??
+      roomId:
+          subscription ??
           RoomSubscription(
             timelineLimit: 5,
             requiredState: RequiredStateRequest.minimal(),
