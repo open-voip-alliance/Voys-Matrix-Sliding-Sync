@@ -1,10 +1,46 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test/test.dart';
 import 'package:voys_matrix_sliding_sync/voys_matrix_sliding_sync.dart';
+
+/// Wraps the default HTTP client and forwards every request to the real server.
+///
+/// Call [nextSyncRequest] before starting a sync cycle to obtain a [Future]
+/// that resolves with the parsed body of the next sliding sync POST.
+class _CapturingHttpClient extends http.BaseClient {
+  final _inner = http.Client();
+  Completer<Map<String, dynamic>>? _nextCompleter;
+
+  /// Returns a [Future] that completes with the body of the next sliding sync
+  /// POST request. Must be called before the sync cycle starts.
+  Future<Map<String, dynamic>> get nextSyncRequest {
+    _nextCompleter = Completer<Map<String, dynamic>>();
+    return _nextCompleter!.future;
+  }
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    if (request.url.path.contains('simplified_msc3575/sync') &&
+        request is http.Request) {
+      final completer = _nextCompleter;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(jsonDecode(request.body) as Map<String, dynamic>);
+      }
+    }
+    return _inner.send(request);
+  }
+
+  @override
+  void close() {
+    _inner.close();
+    super.close();
+  }
+}
 
 Future<DatabaseApi> _createDatabase() async {
   sqfliteFfiInit();
@@ -26,13 +62,17 @@ void main() {
     );
   }
 
+  late _CapturingHttpClient capturingHttpClient;
   late SlidingSyncOnlyClient client;
   late SlidingSync slidingSync;
 
   setUpAll(() async {
+    capturingHttpClient = _CapturingHttpClient();
+
     client = SlidingSyncOnlyClient(
       'integration-test',
       database: await _createDatabase(),
+      httpClient: capturingHttpClient,
     );
 
     await client.init(
@@ -172,5 +212,28 @@ void main() {
     await slidingSync.stopSync();
 
     expect(room.id, equals(unloadedRoomId));
+  });
+
+  test('subscribeToRooms sends room IDs in sync request body', () async {
+    const subscribedRoomId =
+        '!subscription-test-room:matrix.eu-production.holodeck.voys.nl';
+
+    slidingSync.subscribeToRooms({
+      subscribedRoomId: RoomSubscription(
+        timelineLimit: 5,
+        requiredState: RequiredStateRequest.minimal(),
+      ),
+    });
+
+    final nextRequest = capturingHttpClient.nextSyncRequest;
+    unawaited(slidingSync.startSync());
+
+    final syncBody = await nextRequest.timeout(const Duration(seconds: 30));
+    await slidingSync.stopSync();
+
+    final roomSubscriptions =
+        syncBody['room_subscriptions'] as Map<String, dynamic>?;
+    expect(roomSubscriptions, isNotNull);
+    expect(roomSubscriptions!.keys, contains(subscribedRoomId));
   });
 }

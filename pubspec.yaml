@@ -9,6 +9,7 @@ dependencies:
   matrix: ^6.1.1
 
 dev_dependencies:
+  http: ^1.0.0
   lints: ^5.0.0
   sqflite_common_ffi: any
   test: ^1.25.0
