@@ -137,10 +137,14 @@ class SlidingSyncList {
 
       case SyncMode.growing:
         // Expanding range from 0
-        final currentEnd = _ranges.isEmpty
+        final rangeEnd = _ranges.isEmpty
             ? _batchSize - 1
             : _ranges.last[1] + _batchSize;
-        var end = currentEnd;
+        // After a restart, _roomIds may contain cached rooms that extend
+        // well beyond the current range. Ensure loadMore() jumps past
+        // the cached rooms so the UI actually gets new data.
+        final loadedEnd = _roomIds.isEmpty ? 0 : _roomIds.length - 1;
+        var end = rangeEnd < loadedEnd ? loadedEnd + _batchSize : rangeEnd;
         if (_maximumNumberOfRooms != null) {
           end = end.clamp(0, _maximumNumberOfRooms - 1);
         }
@@ -191,16 +195,6 @@ class SlidingSyncList {
 
     final start = range[0];
     final end = range[1];
-
-    // If we're in preloaded state and receive a SYNC starting from 0 that's smaller
-    // than our cached range, the server is re-syncing from scratch. Clear cache and start fresh.
-    if (_state == SlidingSyncListLoadingState.preloaded && start == 0) {
-      final cachedRoomCount = _roomIds.where((id) => id.isNotEmpty).length;
-      if (end + 1 < cachedRoomCount) {
-        _roomIds.clear();
-        _state = SlidingSyncListLoadingState.notLoaded;
-      }
-    }
 
     // Ensure list is large enough
     while (_roomIds.length <= end) {
@@ -343,7 +337,11 @@ class SlidingSyncList {
 
     if (_totalRoomCount != null) {
       final loadedCount = _roomIds.where((id) => id.isNotEmpty).length;
-      if (loadedCount >= _totalRoomCount!) {
+      // Only consider fully loaded if our sync ranges actually cover all
+      // rooms. After a restart, _roomIds may have cached entries but the
+      // ranges are small — the server isn't tracking those rooms for us yet.
+      final rangeEnd = _ranges.isEmpty ? 0 : _ranges.last[1] + 1;
+      if (loadedCount >= _totalRoomCount! && rangeEnd >= _totalRoomCount!) {
         return SlidingSyncListLoadingState.fullyLoaded;
       }
     }

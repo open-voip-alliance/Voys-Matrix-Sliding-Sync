@@ -214,6 +214,104 @@ void main() {
     expect(room.id, equals(unloadedRoomId));
   });
 
+  test(
+    'restart after large batch resets ranges to initial batch size',
+    () async {
+      // Session 1: Load rooms and grow the list to a large range.
+      unawaited(slidingSync.startSync());
+      await slidingSync.statusStream.firstWhere(
+        (s) => s == SlidingSyncStatus.finished,
+      );
+
+      // Grow the list a few times beyond the initial batch size.
+      final totalRooms = slidingSync.list!.totalRoomCount ?? 0;
+      if (totalRooms <= 10) {
+        await slidingSync.stopSync();
+        markTestSkipped('Account needs more than 10 rooms for this test');
+        return;
+      }
+      // Load 3 extra batches (5 + 15 = 20 rooms) — enough to demonstrate
+      // the bug without taking too long.
+      for (var i = 0; i < 3; i++) {
+        slidingSync.list!.loadMore();
+        await slidingSync.statusStream.firstWhere(
+          (s) => s == SlidingSyncStatus.finished,
+        );
+      }
+
+      final loadedCount = slidingSync.list!.roomIds.length;
+      expect(
+        loadedCount,
+        greaterThan(5),
+        reason: 'Sanity check: should have loaded more than initial batch',
+      );
+
+      await slidingSync.stopSync();
+      await slidingSync.dispose();
+
+      // Session 2: Simulate app restart — fresh SlidingSync, same database.
+      slidingSync = SlidingSync.builder(client: client)
+          .addList(
+            SlidingSyncList(
+              syncMode: SyncMode.growing,
+              timelineLimit: 0,
+              requiredState: RequiredStateRequest.minimal(),
+              batchSize: 5,
+            ),
+          )
+          .build();
+
+      // Capture the very first request after restart.
+      final nextRequest = capturingHttpClient.nextSyncRequest;
+      unawaited(slidingSync.startSync());
+
+      final syncBody = await nextRequest.timeout(const Duration(seconds: 30));
+      await slidingSync.stopSync();
+
+      // The first request should use the initial batch size (5), not the
+      // full range from the previous session.
+      final lists = syncBody['lists'] as Map<String, dynamic>;
+      final roomsList = lists['rooms'] as Map<String, dynamic>;
+      final ranges = roomsList['ranges'] as List;
+      final firstRange = (ranges.first as List).cast<int>();
+      final requestedCount = firstRange[1] + 1;
+
+      expect(
+        requestedCount,
+        5,
+        reason:
+            'After restart, first request should use initial batch size '
+            '(5), not the $requestedCount rooms from previous session. '
+            'Ranges: $ranges',
+      );
+
+      // After the sync cycle, the server may have delivered more rooms than
+      // we requested (it sends ops for the ranges it was tracking via pos).
+      // The key check: loadMore() should expand past all loaded rooms,
+      // not just grow by one batch from the small initial range.
+      final currentCount = slidingSync.list!.roomIds.length;
+      expect(
+        currentCount,
+        greaterThan(5),
+        reason: 'Rooms from previous session should still be available',
+      );
+
+      slidingSync.list!.loadMore();
+      final loadMoreJson = slidingSync.list!.toRequestJson();
+      final loadMoreRanges = loadMoreJson['ranges'] as List;
+      final loadMoreEnd = (loadMoreRanges.first as List)[1] as int;
+
+      expect(
+        loadMoreEnd + 1,
+        currentCount + 5,
+        reason:
+            'loadMore() should expand past the $currentCount loaded rooms '
+            'by one batch (5), not grow from the small initial range. '
+            'Ranges after loadMore: $loadMoreRanges',
+      );
+    },
+  );
+
   test('subscribeToRooms sends room IDs in sync request body', () async {
     const subscribedRoomId =
         '!subscription-test-room:matrix.eu-production.holodeck.voys.nl';
