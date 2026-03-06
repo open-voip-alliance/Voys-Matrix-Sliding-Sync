@@ -456,7 +456,10 @@ class SlidingSync {
         final hasNewContent =
             hasNewTimeline ||
             isActuallyInitial ||
-            (roomData.inviteState?.isNotEmpty ?? false);
+            (roomData.inviteState?.isNotEmpty ?? false) ||
+            roomData.highlightCount != null ||
+            roomData.notificationCount != null ||
+            roomData.notificationCounts != null;
 
         // Only update room state and emit updates if there are actual changes
         // This prevents processing the same timeline events repeatedly
