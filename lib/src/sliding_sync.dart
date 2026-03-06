@@ -864,29 +864,13 @@ class SlidingSync {
             final roomIds =
                 (listData['room_ids'] as List?)?.cast<String>() ?? [];
             final totalCount = listData['total_count'] as int?;
-            final ranges = (listData['ranges'] as List?)
-                ?.map((r) => (r as List).cast<int>())
-                .toList();
 
             if (roomIds.isNotEmpty) {
-              // Mark list as preloaded with cached data
+              // Restore cached room IDs for immediate UI display, but don't
+              // restore ranges. Let the list start with its initial batch size
+              // to avoid requesting hundreds of rooms on the first sync after
+              // restart, which causes timeouts and slow loading.
               list.markAsPreloaded(roomIds, totalCount);
-
-              // Restore ranges if available
-              if (ranges != null && ranges.isNotEmpty) {
-                list.setRanges(ranges);
-
-                // Only switch to selective mode if the list was fully loaded
-                // If partially loaded, keep growing mode to continue loading
-                final wasFullyLoaded =
-                    totalCount != null && roomIds.length >= totalCount;
-                if (wasFullyLoaded) {
-                  // Switch to selective mode to maintain the cached range
-                  // This prevents the server from re-syncing from scratch
-                  list.setSyncMode(SyncMode.selective);
-                }
-                // Otherwise keep the original sync mode (likely growing)
-              }
             }
           }
         }
@@ -905,7 +889,6 @@ class SlidingSync {
         listsState[entry.key] = {
           'room_ids': roomIds,
           'total_count': entry.value.totalRoomCount,
-          'ranges': entry.value.ranges,
         };
       }
 
