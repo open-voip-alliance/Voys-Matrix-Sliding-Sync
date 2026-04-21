@@ -355,8 +355,7 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         print('Initializing sliding sync for client: ${client.userID}');
       }
 
-      _slidingSync = client
-          .createSlidingSyncBuilder('main')
+      _slidingSync = SlidingSync.builder(client: client)
           .withExtensions(SlidingSyncExtensions.all())
           .addList(
             SlidingSyncList(
