@@ -9,7 +9,6 @@ import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_update.dart';
 import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 
-const _listName = 'rooms';
 const _connId = 'sliding_sync';
 
 /// Main sliding sync controller
@@ -85,12 +84,21 @@ class SlidingSync {
   /// Whether sync is currently running
   bool get isSyncing => _isSyncing;
 
-  /// The current sync list
-  SlidingSyncList? get list => _lists[_listName];
+  /// The default-named sync list ([SlidingSyncList.defaultName]).
+  ///
+  /// Convenience accessor for the single-list configuration. For multi-list
+  /// configurations, use [getList] with the list's explicit name.
+  SlidingSyncList? get list => _lists[SlidingSyncList.defaultName];
+
+  /// All configured lists, keyed by name.
+  Map<String, SlidingSyncList> get lists => Map.unmodifiable(_lists);
+
+  /// Returns the list with the given [name], or `null` if none is configured.
+  SlidingSyncList? getList(String name) => _lists[name];
 
   void _addList(SlidingSyncList list) {
-    _lists[_listName]?.dispose();
-    _lists[_listName] = list;
+    _lists[list.name]?.dispose();
+    _lists[list.name] = list;
   }
 
   /// Subscribes to specific rooms

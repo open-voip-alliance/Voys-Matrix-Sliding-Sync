@@ -7,6 +7,7 @@ import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 /// Manages a sliding sync list
 class SlidingSyncList {
   SlidingSyncList({
+    this.name = defaultName,
     SyncMode syncMode = SyncMode.selective,
     List<List<int>>? ranges,
     int timelineLimit = 1,
@@ -26,6 +27,16 @@ class SlidingSyncList {
       _ranges = _generateRanges();
     }
   }
+
+  /// Name used when [name] is not given at construction.
+  ///
+  /// Matches the historical single-list configuration so existing call sites
+  /// keep producing a list under this name without code changes.
+  static const String defaultName = 'rooms';
+
+  /// Identifier for this list, used as the key in the sliding sync request's
+  /// `lists` map and in [SlidingSync.getList] lookups.
+  final String name;
 
   /// Sync mode for this list
   SyncMode _syncMode;
