@@ -6,7 +6,7 @@ environment:
   sdk: ^3.10.4
 
 dependencies:
-  matrix: ^6.1.1
+  matrix: ^7.1.2
 
 dev_dependencies:
   http: ^1.0.0

@@ -334,4 +334,96 @@ void main() {
     expect(roomSubscriptions, isNotNull);
     expect(roomSubscriptions!.keys, contains(subscribedRoomId));
   });
+
+  group('multi-list support', () {
+    test(
+      'a SlidingSyncList built without an explicit name falls back to defaultName',
+      () {
+        expect(SlidingSyncList.defaultName, equals('rooms'));
+        expect(
+          SlidingSyncList(batchSize: 5).name,
+          equals(SlidingSyncList.defaultName),
+        );
+        expect(
+          SlidingSyncList(name: 'custom', batchSize: 5).name,
+          equals('custom'),
+        );
+      },
+    );
+
+    test(
+      'calling addList multiple times with distinct names keeps every list, '
+      'each looked up by its own name',
+      () async {
+        final localSync = SlidingSync.builder(client: client)
+            .addList(SlidingSyncList(name: 'first', batchSize: 5))
+            .addList(SlidingSyncList(name: 'second', batchSize: 5))
+            .build();
+
+        expect(
+          localSync.lists.keys,
+          containsAll(<String>['first', 'second']),
+          reason: 'Both addList calls should survive build()',
+        );
+        expect(localSync.getList('first'), isNotNull);
+        expect(localSync.getList('second'), isNotNull);
+        expect(localSync.getList('unknown'), isNull);
+
+        await localSync.dispose();
+      },
+    );
+
+    test(
+      'the legacy `list` getter resolves to the defaultName entry even when '
+      'other named lists are configured alongside it',
+      () async {
+        final localSync = SlidingSync.builder(client: client)
+            .addList(SlidingSyncList(batchSize: 5))
+            .addList(SlidingSyncList(name: 'other', batchSize: 5))
+            .build();
+
+        expect(localSync.list, isNotNull);
+        expect(
+          localSync.list,
+          same(localSync.getList(SlidingSyncList.defaultName)),
+        );
+        expect(localSync.list, isNot(same(localSync.getList('other'))));
+
+        await localSync.dispose();
+      },
+    );
+
+    test(
+      "each configured list can be serialised into its own entry under its "
+      "own name, ready for the request body's `lists` map",
+      () async {
+        final localSync = SlidingSync.builder(client: client)
+            .addList(
+              SlidingSyncList(syncMode: SyncMode.growing, batchSize: 5),
+            )
+            .addList(
+              SlidingSyncList(
+                name: 'favourites',
+                syncMode: SyncMode.growing,
+                batchSize: 5,
+              ),
+            )
+            .build();
+
+        final serialisedLists = <String, Map<String, dynamic>>{
+          for (final entry in localSync.lists.entries)
+            entry.key: entry.value.toRequestJson(),
+        };
+
+        expect(
+          serialisedLists.keys,
+          containsAll(<String>['rooms', 'favourites']),
+        );
+        expect(serialisedLists['rooms']!['ranges'], isNotEmpty);
+        expect(serialisedLists['favourites']!['ranges'], isNotEmpty);
+
+        await localSync.dispose();
+      },
+    );
+  });
 }
