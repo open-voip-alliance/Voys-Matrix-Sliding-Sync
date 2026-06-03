@@ -20,6 +20,7 @@ class SlidingSyncOnlyClient extends Client {
     super.roomPreviewLastEvents,
     super.sendTimelineEventTimeout,
     super.httpClient,
+    super.customRoomSorter,
   }) {
     backgroundSync = false;
   }
