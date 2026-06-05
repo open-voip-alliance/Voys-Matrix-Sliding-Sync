@@ -16,10 +16,13 @@ class SlidingSync {
   SlidingSync({
     required this.client,
     SlidingSyncExtensions? extensions,
+    this.previewEventTypes,
   }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
 
   /// The client instance
   final Client client;
+
+  final Set<String>? previewEventTypes;
 
   static const int _pollTimeout = 30000;
 
@@ -197,13 +200,9 @@ class SlidingSync {
           var room = client.getRoomById(roomId);
           if (room == null) {
             // Create room object with null lastEvent
-            room =
-                Room(
-                    id: roomId,
-                    client: client,
-                  )
-                  ..lastEvent =
-                      null; // Explicitly null to prevent "Refreshing..." placeholder
+            room = Room(id: roomId, client: client)
+              ..lastEvent =
+                  null; // Explicitly null to prevent "Refreshing..." placeholder
             client.rooms.add(room);
             // Load room state from database
             await client.database.getSingleRoom(client, roomId);
@@ -634,9 +633,20 @@ class SlidingSync {
       }
     }
 
-    // Process timeline events. Sort oldest-first so events are emitted in
-    // chronological order regardless of how the server delivered them.
-    Event? mostRecentEvent;
+    final previewTypes = previewEventTypes ?? client.roomPreviewLastEvents;
+
+    // Only these events may become room.lastEvent. Excludes redactions, edits
+    // and empty content so ordering ignores non-preview events (e.g.
+    // sent-status, matching the web client.
+    bool isPreviewable(Event event) =>
+        previewTypes.contains(event.type) &&
+        !event.redacted &&
+        event.relationshipType != RelationshipTypes.edit &&
+        event.content.isNotEmpty;
+
+    // Sort oldest-first so events are emitted in chronological order regardless
+    // of how the server delivered them.
+    Event? mostRecentPreviewableEvent;
     if (data.timeline != null) {
       final sortedTimeline = data.timeline!.toList()
         ..sort((a, b) => a.originServerTs.compareTo(b.originServerTs));
@@ -648,8 +658,9 @@ class SlidingSync {
           status: EventStatus.synced,
         );
 
-        // Track most recent event by timestamp (last item after sorting)
-        mostRecentEvent = event;
+        if (isPreviewable(event)) {
+          mostRecentPreviewableEvent = event;
+        }
 
         // Only emit events we haven't seen before to avoid duplicate processing
         if (!_emittedEventIds.contains(event.eventId)) {
@@ -666,9 +677,7 @@ class SlidingSync {
               // Sliding sync may deliver events out of chronological order,
               // so explicit sorting is more reliable than just reversing.
               events: data.timeline!.toList()
-                ..sort(
-                  (a, b) => a.originServerTs.compareTo(b.originServerTs),
-                ),
+                ..sort((a, b) => a.originServerTs.compareTo(b.originServerTs)),
               // Force limited to false to prevent SDK from calling /messages API
               // We manage lastEvent ourselves in sliding sync.
               limited: false,
@@ -686,16 +695,25 @@ class SlidingSync {
       unreadNotifications: data.notificationCounts,
     );
 
-    // Capture lastEvent before handleSync so we can compare afterwards.
-    // The list subscription may only carry a small timeline (e.g. limit 1),
-    // which could be older than a message the user just sent.
-    final previousLastEvent = room.lastEvent;
+    // The room's lastEvent: the newest previewable event in this batch, or the
+    // current one when it's previewable and newer (e.g. a just-sent message the
+    // batch doesn't include yet). We fall back to the current event because
+    // storeRoomUpdate below persists this value and overwrites the stored
+    // lastEvent even when it is null.
+    final prior = room.lastEvent;
+    var lastEventToStore = mostRecentPreviewableEvent;
+    if (prior != null &&
+        isPreviewable(prior) &&
+        (lastEventToStore == null ||
+            prior.originServerTs.isAfter(lastEventToStore.originServerTs))) {
+      lastEventToStore = prior;
+    }
 
     // Store room update in database so handleSync can find the events
     await client.database.storeRoomUpdate(
       roomId,
       roomUpdate,
-      mostRecentEvent, // Pass the true latest event to store in database
+      lastEventToStore,
       client,
     );
 
@@ -712,19 +730,10 @@ class SlidingSync {
       );
     }
 
-    // Restore lastEvent to whichever event is truly the most recent:
-    // either the newest event from this sync batch, or what was already set
-    // (e.g. a just-sent message). This prevents a partial timeline batch from
-    // overwriting a newer lastEvent with an older one.
-    final candidates = [
-      if (mostRecentEvent != null) mostRecentEvent,
-      if (previousLastEvent != null) previousLastEvent,
-    ];
-    if (candidates.isNotEmpty) {
-      room.lastEvent = candidates.reduce(
-        (a, b) => a.originServerTs.isAfter(b.originServerTs) ? a : b,
-      );
-    }
+    // handleSync (above) may have set lastEvent to a non-previewable event;
+    // overwrite it with our previewable choice. If we don't have one, leave
+    // handleSync's value rather than nulling it.
+    room.lastEvent = lastEventToStore ?? room.lastEvent;
   }
 
   /// Processes extensions from the response
@@ -938,11 +947,17 @@ class SlidingSyncBuilder {
   final Client client;
 
   SlidingSyncExtensions? extensions;
+  Set<String>? _previewEventTypes;
   final List<SlidingSyncList> _lists = [];
 
   /// Sets the extensions
   SlidingSyncBuilder withExtensions(SlidingSyncExtensions ext) {
     extensions = ext;
+    return this;
+  }
+
+  SlidingSyncBuilder withPreviewEventTypes(Set<String> types) {
+    _previewEventTypes = types;
     return this;
   }
 
@@ -957,6 +972,7 @@ class SlidingSyncBuilder {
     final slidingSync = SlidingSync(
       client: client,
       extensions: extensions,
+      previewEventTypes: _previewEventTypes,
     );
 
     for (final list in _lists) {
