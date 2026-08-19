@@ -18,6 +18,80 @@ Future<void> _loadEnv() async {
   _LoginPageState._lastToken = env['VG_API'] ?? '';
 }
 
+// Matches the real event type/state key/content shape used by the
+// production Voys conversations app (co.voys.assigned_to).
+const String assignedToEventType = 'co.voys.assigned_to';
+const String assignedToStateKey = 'true';
+// One `co.voys.responded` state event per responder, keyed by the
+// responder's identifier (same identifier namespace as `assignedTo`).
+const String respondedEventType = 'co.voys.responded';
+const List<String> assignableUsers = ['foo', 'baz'];
+
+String? getAssignedTo(Room room) =>
+    room
+            .getState(assignedToEventType, assignedToStateKey)
+            ?.content['assigned_to']
+        as String?;
+
+Set<String> getResponded(Room room) =>
+    room.states[respondedEventType]?.keys.toSet() ?? const {};
+
+/// Preview text for the room list's last-message line. `co.voys.assigned_to`
+/// is included in the sliding sync preview event types (see `_initSync`) so
+/// reassignment-only rooms still sort by recency, but it has no `body` field,
+/// so the SDK's generic `Event.body` would otherwise show
+/// 'Unknown message format of type "co.voys.assigned_to"'.
+String lastEventPreview(Event? event) {
+  if (event == null) return 'No messages';
+  if (event.type == assignedToEventType) {
+    final assignedTo = event.content['assigned_to'] as String?;
+    return assignedTo == null
+        ? 'Room unassigned'
+        : 'Room assigned to $assignedTo';
+  }
+  return event.body;
+}
+
+/// Builds the server-side filter for the room list's `assigned_to`/`responded`/
+/// `involving`/`unread` selections (see [_allFilterValue]/[_unassignedFilterValue]
+/// in [_RoomListPageState]).
+SlidingRoomFilter? roomListFilterFor({
+  required String assignedToFilter,
+  required String respondedFilter,
+  required String involvingFilter,
+  required bool unreadFilter,
+}) {
+  List<String?>? assignedTo;
+  if (assignedToFilter == _unassignedFilterValue) {
+    assignedTo = const [null];
+  } else if (assignedToFilter != _allFilterValue) {
+    assignedTo = [assignedToFilter];
+  }
+
+  final responded = respondedFilter == _allFilterValue
+      ? null
+      : [respondedFilter];
+
+  final involving = involvingFilter == _allFilterValue
+      ? null
+      : [involvingFilter];
+
+  final unread = unreadFilter ? true : null;
+
+  if (assignedTo == null &&
+      responded == null &&
+      involving == null &&
+      unread == null) {
+    return null;
+  }
+  return SlidingRoomFilter(
+    assignedTo: assignedTo,
+    responded: responded,
+    involving: involving,
+    unread: unread,
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _loadEnv();
@@ -37,6 +111,14 @@ final clientProvider = FutureProvider((_) async {
 
   // Disable background sync to prevent sync loop
   client.backgroundSync = false;
+
+  // Order `client.rooms` purely by recency, same as the production
+  // Voys conversations app -- `latestEventReceivedTime` falls back to the
+  // room's creation time (or now, for invites) when there's no cached
+  // `lastEvent` yet, so rooms never get stranded with a null sort key.
+  client.setCustomRoomSorter(
+    (a, b) => b.latestEventReceivedTime.compareTo(a.latestEventReceivedTime),
+  );
 
   // Initialize - our custom client will intercept any sync() calls and return empty responses
   await client.init(
@@ -151,7 +233,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (_loading) return;
     setState(() => _loading = true);
     try {
-      final client = ref.read(clientProvider).valueOrNull;
+      final client = ref.read(clientProvider).value;
       await client?.dispose();
       final dbPath = await sqlite.getDatabasesPath();
       final path = '$dbPath/database.sqlite';
@@ -293,12 +375,24 @@ class RoomListPage extends ConsumerStatefulWidget {
   _RoomListPageState createState() => _RoomListPageState();
 }
 
+// PopupMenuButton treats a selected item's `value` of `null` as "menu
+// dismissed" (calls onCanceled, not onSelected), so a real `null` can
+// never be a selectable value -- sentinel strings stand in for it.
+const String _allFilterValue = ' all';
+const String _unassignedFilterValue = ' unassigned';
+const String _unassignValue = ' unassign';
+
 class _RoomListPageState extends ConsumerState<RoomListPage> {
   SlidingSync? _slidingSync;
   bool _isInitializing = true;
   final ScrollController _scrollController = ScrollController();
   bool _isLoadingMore = false;
   StreamSubscription? _timelineSubscription;
+  String _filterAssignedTo = _allFilterValue;
+  String _filterResponded = _allFilterValue;
+  String _filterInvolving = _allFilterValue;
+  bool _filterUnread = false;
+  bool _sortOldestFirst = false;
 
   @override
   void initState() {
@@ -357,14 +451,28 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
 
       _slidingSync = SlidingSync.builder(client: client)
           .withExtensions(SlidingSyncExtensions.all())
+          // A room whose only activity is state changes (e.g. reassignment,
+          // with no chat messages ever sent) has no event in the SDK's
+          // default previewable set, so it never gets a `lastEvent` and
+          // sorts to the bottom regardless of how recently it was touched.
+          // Matches the production Voys conversations app's preview types.
+          .withPreviewEventTypes({
+            ...client.roomPreviewLastEvents,
+            assignedToEventType,
+          })
           .addList(
             SlidingSyncList(
               syncMode: SyncMode.growing,
-              timelineLimit: 1,
+              // Fetch enough events per room that a previewable event is
+              // almost always in-window, matching the production Voys
+              // conversations app's list timeline_limit.
+              timelineLimit: 10,
               requiredState: RequiredStateRequest(
                 include: [
                   ['m.room.name', ''],
                   ['m.room.avatar', ''],
+                  [assignedToEventType, assignedToStateKey],
+                  [respondedEventType, '*'],
                 ],
               ),
               // Use 1 to see the rooms loading one-by-one in action.
@@ -474,6 +582,49 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
 
     // Logout without blocking (fire and forget)
     unawaited(client.logout());
+  }
+
+  SlidingRoomFilter? _buildFilters() => roomListFilterFor(
+    assignedToFilter: _filterAssignedTo,
+    respondedFilter: _filterResponded,
+    involvingFilter: _filterInvolving,
+    unreadFilter: _filterUnread,
+  );
+
+  void _applyPreset({
+    required String involving,
+    required bool unread,
+    required bool oldestFirst,
+  }) {
+    setState(() {
+      _filterAssignedTo = _allFilterValue;
+      _filterResponded = _allFilterValue;
+      _filterInvolving = involving;
+      _filterUnread = unread;
+      _sortOldestFirst = oldestFirst;
+    });
+    _slidingSync?.list?.setFilters(_buildFilters());
+    _slidingSync?.list?.setOldestActivityFirst(
+      oldestActivityFirst: oldestFirst,
+    );
+  }
+
+  void _assignRoom(Room room, String? username) async {
+    try {
+      await room.client.setRoomStateWithKey(
+        room.id,
+        assignedToEventType,
+        assignedToStateKey,
+        {'assigned_to': username},
+      );
+      _slidingSync?.wakeSyncLoop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error assigning room: $e')));
+      }
+    }
   }
 
   void _join(Room room) async {
@@ -682,8 +833,141 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Chats ($roomCount)'),
+        title: Text(
+          _filterUnread && _sortOldestFirst
+              ? 'Urgent ($roomCount)'
+              : _filterInvolving == 'foo'
+              ? 'My chats ($roomCount)'
+              : 'Chats ($roomCount)',
+        ),
         actions: [
+          TextButton(
+            onPressed: () => _applyPreset(
+              involving: _allFilterValue,
+              unread: false,
+              oldestFirst: false,
+            ),
+            child: const Text('All'),
+          ),
+          TextButton(
+            onPressed: () => _applyPreset(
+              involving: 'foo',
+              unread: false,
+              oldestFirst: false,
+            ),
+            child: const Text('My chats'),
+          ),
+          TextButton(
+            onPressed: () => _applyPreset(
+              involving: _allFilterValue,
+              unread: true,
+              oldestFirst: true,
+            ),
+            child: const Text('Urgent'),
+          ),
+          const VerticalDivider(),
+          PopupMenuButton<String>(
+            icon: Icon(
+              _filterAssignedTo == _allFilterValue
+                  ? Icons.filter_list
+                  : Icons.filter_list_alt,
+            ),
+            tooltip: 'Filter by assignee',
+            onSelected: (value) {
+              setState(() => _filterAssignedTo = value);
+              _slidingSync?.list?.setFilters(_buildFilters());
+            },
+            itemBuilder: (context) => [
+              CheckedPopupMenuItem(
+                value: _allFilterValue,
+                checked: _filterAssignedTo == _allFilterValue,
+                child: const Text('All'),
+              ),
+              CheckedPopupMenuItem(
+                value: _unassignedFilterValue,
+                checked: _filterAssignedTo == _unassignedFilterValue,
+                child: const Text('Unassigned'),
+              ),
+              for (final username in assignableUsers)
+                CheckedPopupMenuItem(
+                  value: username,
+                  checked: _filterAssignedTo == username,
+                  child: Text(username),
+                ),
+            ],
+          ),
+          PopupMenuButton<String>(
+            icon: Icon(
+              _filterResponded == _allFilterValue
+                  ? Icons.forum_outlined
+                  : Icons.forum,
+            ),
+            tooltip: 'Filter by responded',
+            onSelected: (value) {
+              setState(() => _filterResponded = value);
+              _slidingSync?.list?.setFilters(_buildFilters());
+            },
+            itemBuilder: (context) => [
+              CheckedPopupMenuItem(
+                value: _allFilterValue,
+                checked: _filterResponded == _allFilterValue,
+                child: const Text('All'),
+              ),
+              for (final username in assignableUsers)
+                CheckedPopupMenuItem(
+                  value: username,
+                  checked: _filterResponded == username,
+                  child: Text(username),
+                ),
+            ],
+          ),
+          PopupMenuButton<String>(
+            icon: Icon(
+              _filterInvolving == _allFilterValue
+                  ? Icons.person_search_outlined
+                  : Icons.person_search,
+            ),
+            tooltip: 'Filter: involving (assigned to OR responded)',
+            onSelected: (value) {
+              setState(() => _filterInvolving = value);
+              _slidingSync?.list?.setFilters(_buildFilters());
+            },
+            itemBuilder: (context) => [
+              CheckedPopupMenuItem(
+                value: _allFilterValue,
+                checked: _filterInvolving == _allFilterValue,
+                child: const Text('All'),
+              ),
+              for (final username in assignableUsers)
+                CheckedPopupMenuItem(
+                  value: username,
+                  checked: _filterInvolving == username,
+                  child: Text(username),
+                ),
+            ],
+          ),
+          IconButton(
+            icon: Icon(
+              _filterUnread
+                  ? Icons.mark_chat_unread
+                  : Icons.mark_chat_unread_outlined,
+            ),
+            tooltip: 'Filter: unread only',
+            onPressed: () {
+              setState(() => _filterUnread = !_filterUnread);
+              _slidingSync?.list?.setFilters(_buildFilters());
+            },
+          ),
+          IconButton(
+            icon: Icon(_sortOldestFirst ? Icons.north : Icons.south),
+            tooltip: 'Sort: oldest activity first',
+            onPressed: () {
+              setState(() => _sortOldestFirst = !_sortOldestFirst);
+              _slidingSync?.list?.setOldestActivityFirst(
+                oldestActivityFirst: _sortOldestFirst,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.meeting_room),
             onPressed: _showGoToRoomDialog,
@@ -703,25 +987,44 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                 }
 
                 final list = _slidingSync!.list;
-                // Filter out placeholder room IDs (empty strings)
-                var roomIds = (list?.roomIds ?? [])
-                    .where((id) => id.isNotEmpty)
-                    .toList();
+                List<String> roomIds;
+                if (_sortOldestFirst) {
+                  // The server always sorts (never skips it via the
+                  // full-range optimization) for `oldest_activity_first`, so
+                  // its order is reliable here -- unlike the default
+                  // recency sort below, `client.rooms` can't reproduce
+                  // "oldest first" since its own sorter is fixed to recency.
+                  roomIds = (list?.roomIds ?? [])
+                      .where((id) => id.isNotEmpty)
+                      .toList();
+                } else {
+                  // Order from `client.rooms` (kept sorted by `customRoomSorter`,
+                  // see clientProvider) rather than the server's op order or a
+                  // manual re-sort -- the server can skip its recency sort when a
+                  // filtered list's range covers its whole result set, and
+                  // `client.rooms` degrades gracefully (via
+                  // `latestEventReceivedTime`) when a room has no cached
+                  // `lastEvent` yet. `list.roomIds` still scopes membership to
+                  // the current filter/window.
+                  final listRoomIdSet = (list?.roomIds ?? [])
+                      .where((id) => id.isNotEmpty)
+                      .toSet();
+                  roomIds = client.rooms
+                      .where((room) => listRoomIdSet.contains(room.id))
+                      .map((room) => room.id)
+                      .toList();
+                }
 
-                // Sort rooms by last event timestamp (most recent first)
-                roomIds.sort((a, b) {
-                  final roomA = client.getRoomById(a);
-                  final roomB = client.getRoomById(b);
+                // Filter changes reset the list to `notLoaded` until the
+                // server confirms the new result set, so treat that state
+                // like "still loading" rather than "confirmed empty" --
+                // otherwise switching filters flashes a false "no rooms"
+                // message before the real (filtered) rooms arrive.
+                final isAwaitingFreshData =
+                    list?.state == SlidingSyncListLoadingState.notLoaded;
 
-                  final timeA = roomA?.lastEvent?.originServerTs ?? DateTime(0);
-                  final timeB = roomB?.lastEvent?.originServerTs ?? DateTime(0);
-
-                  return timeB.compareTo(
-                    timeA,
-                  ); // Descending order (newest first)
-                });
-
-                if (roomIds.isEmpty && !snapshot.hasData) {
+                if (roomIds.isEmpty &&
+                    (!snapshot.hasData || isAwaitingFreshData)) {
                   return const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -734,8 +1037,19 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                   );
                 }
 
-                if (roomIds.isEmpty && snapshot.hasData) {
-                  return const Center(child: Text('No rooms found'));
+                if (roomIds.isEmpty) {
+                  final hasActiveFilter =
+                      _filterAssignedTo != _allFilterValue ||
+                      _filterResponded != _allFilterValue ||
+                      _filterInvolving != _allFilterValue ||
+                      _filterUnread;
+                  return Center(
+                    child: Text(
+                      hasActiveFilter
+                          ? 'No rooms match this filter'
+                          : 'No rooms found',
+                    ),
+                  );
                 }
 
                 return Column(
@@ -754,6 +1068,10 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                               title: Text('Loading...'),
                             );
                           }
+
+                          final assignedTo = getAssignedTo(room);
+                          final responded = getResponded(room);
+                          final hasUnread = room.notificationCount > 0;
 
                           return ListTile(
                             leading: room.avatar == null
@@ -782,7 +1100,14 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                             title: Row(
                               children: [
                                 Expanded(
-                                  child: Text(room.getLocalizedDisplayname()),
+                                  child: Text(
+                                    room.getLocalizedDisplayname(),
+                                    style: TextStyle(
+                                      fontWeight: hasUnread
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
                                 ),
                                 if (room.notificationCount > 0)
                                   Material(
@@ -797,20 +1122,85 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                                   ),
                               ],
                             ),
-                            subtitle: Row(
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    room.lastEvent?.body ?? 'No messages',
-                                    maxLines: 1,
-                                  ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        lastEventPreview(room.lastEvent),
+                                        maxLines: 1,
+                                        style: TextStyle(
+                                          fontWeight: hasUnread
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ),
+                                    if (room.lastEvent?.originServerTs != null)
+                                      Text(
+                                        room.lastEvent!.originServerTs
+                                            .toIso8601String(),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                  ],
                                 ),
-                                if (room.lastEvent?.originServerTs != null)
+                                assignedTo == null
+                                    ? const Text(
+                                        'Unassigned',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      )
+                                    : Text.rich(
+                                        TextSpan(
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                          children: [
+                                            const TextSpan(
+                                              text: 'Assigned to: ',
+                                            ),
+                                            TextSpan(
+                                              text: assignedTo,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                if (responded.isNotEmpty)
                                   Text(
-                                    room.lastEvent!.originServerTs
-                                        .toIso8601String(),
-                                    style: const TextStyle(fontSize: 11),
+                                    'Responded: ${responded.join(', ')}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
+                                    ),
                                   ),
+                              ],
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              icon: const Icon(Icons.person_add_alt_1),
+                              tooltip: 'Assign room',
+                              onSelected: (username) => _assignRoom(
+                                room,
+                                username == _unassignValue ? null : username,
+                              ),
+                              itemBuilder: (context) => [
+                                for (final username in assignableUsers)
+                                  PopupMenuItem(
+                                    value: username,
+                                    child: Text(username),
+                                  ),
+                                const PopupMenuItem(
+                                  value: _unassignValue,
+                                  child: Text('Unassign'),
+                                ),
                               ],
                             ),
                             onTap: () => _join(room),
@@ -867,6 +1257,44 @@ class _RoomPageState extends State<RoomPage> {
   Timeline? _timeline;
   final ScrollController _scrollController = ScrollController();
   bool _isLoadingMore = false;
+  late String? _assignedTo = getAssignedTo(widget.room);
+  // Which identifier `co.voys.responded` gets recorded under when sending a
+  // message, since the demo's assignable identifiers aren't tied to the
+  // real logged-in Matrix account.
+  String _respondingAs = assignableUsers.first;
+
+  void _recordResponse() async {
+    if (getResponded(widget.room).contains(_respondingAs)) return;
+
+    try {
+      await widget.room.client.setRoomStateWithKey(
+        widget.room.id,
+        respondedEventType,
+        _respondingAs,
+        {},
+      );
+    } catch (e) {
+      if (kDebugMode) print('Error recording response: $e');
+    }
+  }
+
+  void _assignRoom(String? username) async {
+    try {
+      await widget.room.client.setRoomStateWithKey(
+        widget.room.id,
+        assignedToEventType,
+        assignedToStateKey,
+        {'assigned_to': username},
+      );
+      if (mounted) setState(() => _assignedTo = username);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error assigning room: $e')));
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -892,6 +1320,14 @@ class _RoomPageState extends State<RoomPage> {
               timeline.events.length < Room.defaultHistoryCount) {
             await timeline.requestHistory(
               historyCount: Room.defaultHistoryCount,
+            );
+          }
+          // Mark the room as read so `notificationCount` clears -- events
+          // arrive newest-first, so the first event is the latest.
+          final latestEventId = timeline.events.firstOrNull?.eventId;
+          if (latestEventId != null) {
+            unawaited(
+              widget.room.setReadMarker(latestEventId, mRead: latestEventId),
             );
           }
           if (mounted) setState(() {});
@@ -938,12 +1374,14 @@ class _RoomPageState extends State<RoomPage> {
     widget.room.sendTextEvent(_sendController.text.trim());
     _sendController.clear();
     _focusNode.requestFocus();
+    _recordResponse();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight + 10,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -955,8 +1393,28 @@ class _RoomPageState extends State<RoomPage> {
                 style: const TextStyle(fontSize: 14),
               ),
             ),
+            Text(
+              _assignedTo == null ? 'Unassigned' : 'Assigned to: $_assignedTo',
+              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
           ],
         ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.person_add_alt_1),
+            tooltip: 'Assign room',
+            onSelected: (username) =>
+                _assignRoom(username == _unassignValue ? null : username),
+            itemBuilder: (context) => [
+              for (final username in assignableUsers)
+                PopupMenuItem(value: username, child: Text(username)),
+              const PopupMenuItem(
+                value: _unassignValue,
+                child: Text('Unassign'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -1027,6 +1485,20 @@ class _RoomPageState extends State<RoomPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
                 children: [
+                  DropdownButton<String>(
+                    value: _respondingAs,
+                    items: [
+                      for (final username in assignableUsers)
+                        DropdownMenuItem(
+                          value: username,
+                          child: Text(username),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _respondingAs = value);
+                    },
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _sendController,

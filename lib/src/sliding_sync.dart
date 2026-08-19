@@ -64,11 +64,22 @@ class SlidingSync {
   /// Track latest event ID per room to detect new messages
   final Map<String, String> _latestEventIds = {};
 
+  /// Track last known highlight/notification counts per room to detect
+  /// real changes — the server may echo these on every response even
+  /// when the value hasn't changed.
+  final Map<String, int> _highlightCounts = {};
+  final Map<String, int> _notificationCounts = {};
+
   /// Track which events we've already emitted to avoid duplicates
   final Set<String> _emittedEventIds = {};
 
   /// To-device batch token — echoed back to the server as `extensions.to_device.since`
   String? _toDeviceSince;
+
+  /// Completer used to cut short the busy-loop-avoidance delay in [_syncLoop]
+  /// (see the comment there) via [wakeSyncLoop]. Reset at the top of every
+  /// loop iteration.
+  Completer<void> _wakeSignal = Completer<void>();
 
   /// Creates a builder for configuring sliding sync
   static SlidingSyncBuilder builder({required Client client}) {
@@ -101,6 +112,7 @@ class SlidingSync {
 
   void _addList(SlidingSyncList list) {
     _lists[list.name]?.dispose();
+    list.onConfigChanged = wakeSyncLoop;
     _lists[list.name] = list;
   }
 
@@ -114,12 +126,26 @@ class SlidingSync {
       _initializedRooms.remove(roomId);
       _latestEventIds.remove(roomId);
     }
+    wakeSyncLoop();
   }
 
   /// Unsubscribes from specific rooms
   void unsubscribeFromRooms(List<String> roomIds) {
     for (final roomId in roomIds) {
       _activeRoomSubscriptions.remove(roomId);
+    }
+    wakeSyncLoop();
+  }
+
+  /// Wakes the sync loop immediately if it's currently sleeping between polls
+  /// (the busy-loop-avoidance delay in [_syncLoop]), so the next request goes
+  /// out right away instead of waiting out that delay. [SlidingSyncList]'s
+  /// config setters already call this themselves via `onConfigChanged`; this
+  /// is exposed for other cases where a caller wants to force an immediate
+  /// poll (e.g. a pull-to-refresh gesture).
+  void wakeSyncLoop() {
+    if (!_wakeSignal.isCompleted) {
+      _wakeSignal.complete();
     }
   }
 
@@ -274,12 +300,17 @@ class SlidingSync {
     var lastRequestTime = DateTime.now();
 
     while (_isSyncing && _stopCompleter == null) {
+      _wakeSignal = Completer<void>();
       try {
         _updateStatus(SlidingSyncStatus.waitingForResponse);
+        final requestGenerations = {
+          for (final entry in _lists.entries) entry.key: entry.value.generation,
+        };
         final response = await client.slidingSync(_buildRequest().toJson());
         _updateStatus(SlidingSyncStatus.processing);
         final update = await _processResponse(
           SlidingSyncResponse.fromJson(response),
+          requestGenerations,
         );
         _updateStatus(SlidingSyncStatus.finished);
 
@@ -301,13 +332,18 @@ class SlidingSync {
 
         // Workaround: Server ignores timeout parameter and responds immediately
         // Add delay when request completes too fast and there are no changes
-        // This prevents busy loop while maintaining responsiveness for new messages
+        // This prevents busy loop while maintaining responsiveness for new messages.
+        // wakeSyncLoop() cuts this short for callers that need the next
+        // request to go out immediately (e.g. after changing list filters).
         if (requestDuration.inMilliseconds < 5000 && !hasChanges) {
           const targetInterval =
               3000; // Target 3 second interval between requests
           final delayMs = targetInterval - requestDuration.inMilliseconds;
           if (delayMs > 0) {
-            await Future.delayed(Duration(milliseconds: delayMs));
+            await Future.any([
+              Future.delayed(Duration(milliseconds: delayMs)),
+              _wakeSignal.future,
+            ]);
           }
         }
 
@@ -366,6 +402,7 @@ class SlidingSync {
   /// Processes a sync response
   Future<SlidingSyncUpdate> _processResponse(
     SlidingSyncResponse response,
+    Map<String, int> requestGenerations,
   ) async {
     // Update position
     _pos = response.pos;
@@ -378,7 +415,17 @@ class SlidingSync {
         final listResponse = entry.value;
         final list = _lists[listName];
 
-        if (list != null) {
+        // Drop responses for a list that has been reset since this
+        // response's request was built -- they describe a room set/ranges
+        // that no longer apply (e.g. the previous filter's rooms) and would
+        // otherwise flash stale data onto the freshly reset list.
+        final requestGeneration = requestGenerations[listName];
+        final isStale =
+            list != null &&
+            requestGeneration != null &&
+            requestGeneration != list.generation;
+
+        if (list != null && !isStale) {
           // Process all operation types and track if anything actually changed
           var hasActualChanges = false;
           if (listResponse.ops != null) {
@@ -408,11 +455,15 @@ class SlidingSync {
             }
           }
 
-          // Apply the authoritative count from the server after ops are done
-          list.applyServerCount(listResponse.count);
+          // Apply the authoritative count from the server after ops are done.
+          // A filter matching zero rooms produces no op/room-ID changes above,
+          // but the count moving the list out of `notLoaded` is itself a
+          // change callers need to see -- otherwise the UI never learns the
+          // list finished loading with zero results.
+          final countChanged = list.applyServerCount(listResponse.count);
 
           // Only add to updates if operations actually changed something
-          if (hasActualChanges) {
+          if (hasActualChanges || countChanged) {
             listUpdates[listName] = SlidingSyncListUpdate(
               count: listResponse.count,
               ops: listResponse.ops,
@@ -459,14 +510,33 @@ class SlidingSync {
           }
         }
 
+        // Check for changed highlight/notification counts.
+        final effectiveHighlight =
+            roomData.highlightCount ??
+            roomData.notificationCounts?.highlightCount;
+        final effectiveNotification =
+            roomData.notificationCount ??
+            roomData.notificationCounts?.notificationCount;
+        final highlightChanged =
+            effectiveHighlight != null &&
+            effectiveHighlight != _highlightCounts[roomId];
+        final notificationChanged =
+            effectiveNotification != null &&
+            effectiveNotification != _notificationCounts[roomId];
+        if (effectiveHighlight != null) {
+          _highlightCounts[roomId] = effectiveHighlight;
+        }
+        if (effectiveNotification != null) {
+          _notificationCounts[roomId] = effectiveNotification;
+        }
+
         // Check if there are meaningful changes
         final hasNewContent =
             hasNewTimeline ||
             isActuallyInitial ||
             (roomData.inviteState?.isNotEmpty ?? false) ||
-            roomData.highlightCount != null ||
-            roomData.notificationCount != null ||
-            roomData.notificationCounts != null;
+            highlightChanged ||
+            notificationChanged;
 
         // Only update room state and emit updates if there are actual changes
         // This prevents processing the same timeline events repeatedly

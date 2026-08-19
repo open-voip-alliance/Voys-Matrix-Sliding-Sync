@@ -11,6 +11,10 @@ class SlidingRoomFilter {
     this.roomNameLike,
     this.tags,
     this.notTags,
+    this.assignedTo,
+    this.responded,
+    this.involving,
+    this.unread,
   });
 
   /// Creates a filter for rooms within a specific space
@@ -49,6 +53,28 @@ class SlidingRoomFilter {
   /// Exclude rooms with specific tags
   final List<String>? notTags;
 
+  /// Voys-specific extension (`co.voys.assigned_to` state event). Only rooms
+  /// whose assignee is in this list are included; `null` matches unassigned
+  /// rooms.
+  final List<String?>? assignedTo;
+
+  /// Voys-specific extension (`co.voys.responded` state events, one per
+  /// responder). Only rooms where one of these identifiers has responded are
+  /// included.
+  final List<String>? responded;
+
+  /// Voys-specific extension (`co.voys.responded` state events, one per
+  /// responder). Only rooms where one of these identifiers is the assignee
+  /// OR has responded are included -- an OR across `assignedTo`/`responded`,
+  /// unlike every other filter field which is AND'd together.
+  final List<String>? involving;
+
+  /// Voys-specific extension. If `true`, only rooms with unread content are
+  /// included (the same notification count used for the `notification_count`
+  /// field on each room, independent of `co.voys.responded` or room mute
+  /// state).
+  final bool? unread;
+
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
 
@@ -66,6 +92,16 @@ class SlidingRoomFilter {
     if (roomNameLike != null) json['room_name_like'] = roomNameLike;
     if (tags != null && tags!.isNotEmpty) json['tags'] = tags;
     if (notTags != null && notTags!.isNotEmpty) json['not_tags'] = notTags;
+    if (assignedTo != null && assignedTo!.isNotEmpty) {
+      json['assigned_to'] = assignedTo;
+    }
+    if (responded != null && responded!.isNotEmpty) {
+      json['responded'] = responded;
+    }
+    if (involving != null && involving!.isNotEmpty) {
+      json['involving'] = involving;
+    }
+    if (unread != null) json['unread'] = unread;
 
     return json;
   }

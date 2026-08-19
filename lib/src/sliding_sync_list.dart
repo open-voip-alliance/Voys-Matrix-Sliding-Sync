@@ -13,12 +13,14 @@ class SlidingSyncList {
     int timelineLimit = 1,
     RequiredStateRequest? requiredState,
     SlidingRoomFilter? filters,
+    bool oldestActivityFirst = false,
     int batchSize = 20,
     int? maximumNumberOfRooms,
   }) : _syncMode = syncMode,
        _timelineLimit = timelineLimit,
        _requiredState = requiredState,
        _filters = filters,
+       _oldestActivityFirst = oldestActivityFirst,
        _batchSize = batchSize,
        _maximumNumberOfRooms = maximumNumberOfRooms {
     if (ranges != null) {
@@ -58,7 +60,11 @@ class SlidingSyncList {
   final RequiredStateRequest? _requiredState;
 
   /// Room filters
-  final SlidingRoomFilter? _filters;
+  SlidingRoomFilter? _filters;
+
+  /// Voys-specific extension: sort by oldest relevant activity first
+  /// (ascending) instead of the default most-recent-first (descending).
+  bool _oldestActivityFirst;
 
   /// Current ranges being synced
   List<List<int>> _ranges = [];
@@ -75,6 +81,17 @@ class SlidingSyncList {
   /// Current loading state
   SlidingSyncListLoadingState _state = SlidingSyncListLoadingState.notLoaded;
 
+  /// Bumped by every [reset] (including via [setFilters]). A request is
+  /// built against a specific generation of this list's config; if [reset]
+  /// runs again before that request's response arrives, the response
+  /// describes a room set/ranges that no longer apply (e.g. the previous
+  /// filter's rooms) and must be discarded rather than applied on top of
+  /// the freshly reset list. See [SlidingSync] response processing.
+  int _generation = 0;
+
+  /// Current generation. See [_generation].
+  int get generation => _generation;
+
   /// Current state
   SlidingSyncListLoadingState get state => _state;
 
@@ -90,12 +107,20 @@ class SlidingSyncList {
   /// Whether all rooms have been loaded
   bool get isFullyLoaded => _state == SlidingSyncListLoadingState.fullyLoaded;
 
+  /// Invoked whenever this list's config changes in a way that should be
+  /// reflected in the next request as soon as possible, rather than waiting
+  /// for the owning [SlidingSync]'s next scheduled poll. Set by [SlidingSync]
+  /// when this list is registered -- callers of [setSyncMode], [setRanges],
+  /// [setFilters], [loadMore] and [reset] don't need to know it exists.
+  void Function()? onConfigChanged;
+
   /// Updates the sync mode
   void setSyncMode(SyncMode mode) {
     if (_syncMode != mode) {
       _syncMode = mode;
       _currentPageStart = 0;
       _ranges = _generateRanges();
+      onConfigChanged?.call();
     }
   }
 
@@ -105,24 +130,41 @@ class SlidingSyncList {
   void setRanges(List<List<int>> ranges) {
     if (_syncMode == SyncMode.selective || _syncMode == SyncMode.growing) {
       _ranges = ranges;
+      onConfigChanged?.call();
     }
+  }
+
+  /// Updates the room filters.
+  void setFilters(SlidingRoomFilter? filters) {
+    _filters = filters;
+    reset();
+  }
+
+  /// Updates the Voys-specific `oldest_activity_first` sort order.
+  void setOldestActivityFirst({required bool oldestActivityFirst}) {
+    _oldestActivityFirst = oldestActivityFirst;
+    reset();
   }
 
   /// Loads more rooms (for growing mode)
   void loadMore() {
     if (_syncMode == SyncMode.growing) {
       _ranges = _generateRanges();
+      onConfigChanged?.call();
     }
   }
 
   /// Resets the list
   void reset() {
+    _generation++;
     _roomIds.clear();
     _totalRoomCount = null;
     _currentPageStart = 0;
+    _ranges = [];
     _ranges = _generateRanges();
     _state = SlidingSyncListLoadingState.notLoaded;
     _updateState(_state);
+    onConfigChanged?.call();
   }
 
   /// Generates ranges based on sync mode
@@ -179,11 +221,16 @@ class SlidingSyncList {
       json['required_state'] = _requiredState.toJson();
     }
 
-    if (_filters != null) {
-      final filterJson = _filters.toJson();
+    final filters = _filters;
+    if (filters != null) {
+      final filterJson = filters.toJson();
       if (filterJson.isNotEmpty) {
         json['filters'] = filterJson;
       }
+    }
+
+    if (_oldestActivityFirst) {
+      json['oldest_activity_first'] = true;
     }
 
     return json;
@@ -192,11 +239,17 @@ class SlidingSyncList {
   /// Applies the authoritative total room count from the server response.
   /// Called after list operations have been applied so the count can
   /// correct any drift introduced by INSERT/DELETE adjustments.
-  void applyServerCount(int? count) {
+  ///
+  /// Returns whether this changed anything -- e.g. a filter matching zero
+  /// rooms carries no op/room-ID changes for callers to notice, but the
+  /// count arriving still moves the list from `notLoaded` to `fullyLoaded`.
+  bool applyServerCount(int? count) {
     if (count != null && count != _totalRoomCount) {
       _totalRoomCount = count;
       _updateLoadingState();
+      return true;
     }
+    return false;
   }
 
   /// Apply a SYNC operation - replaces room IDs in a range
@@ -241,15 +294,19 @@ class SlidingSyncList {
       }
     }
 
-    // Now replace room IDs in the range and track if anything changed
-    var index = 0;
+    // Now replace room IDs in the range and track if anything changed.
+    // The server only sends IDs for positions it actually has rooms for --
+    // e.g. a filter matching fewer rooms than the range width. Any remaining
+    // positions in the range must be cleared rather than left holding the
+    // previous (now stale/removed) room ID.
     var hasChanges = false;
-    for (var i = start; i <= end && index < roomIds.length; i++) {
-      if (_roomIds[i] != roomIds[index]) {
-        _roomIds[i] = roomIds[index];
+    for (var i = start; i <= end; i++) {
+      final syncIndex = i - start;
+      final newRoomId = syncIndex < roomIds.length ? roomIds[syncIndex] : '';
+      if (_roomIds[i] != newRoomId) {
+        _roomIds[i] = newRoomId;
         hasChanges = true;
       }
-      index++;
     }
 
     _updateLoadingState();
