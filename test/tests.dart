@@ -54,6 +54,8 @@ Future<DatabaseApi> _createDatabase() async {
   );
 }
 
+final _homeserver = Uri.parse('https://matrix1.wd1-main.warpdrive.voys.nl');
+
 void main() {
   final accessToken = Platform.environment['ACCESS_TOKEN'];
   if (accessToken == null || accessToken.isEmpty) {
@@ -65,6 +67,7 @@ void main() {
   late _CapturingHttpClient capturingHttpClient;
   late SlidingSyncOnlyClient client;
   late SlidingSync slidingSync;
+  var setUpCompleted = false;
 
   setUpAll(() async {
     capturingHttpClient = _CapturingHttpClient();
@@ -80,15 +83,26 @@ void main() {
       waitUntilLoadCompletedLoaded: false,
     );
 
-    await client.checkHomeserver(
-      Uri.parse('https://matrix.eu-production.holodeck.voys.nl'),
-    );
+    try {
+      await client.checkHomeserver(_homeserver);
+    } catch (e) {
+      throw Exception(
+        'Homeserver $_homeserver is not reachable ($e).\n'
+        'Check: curl -i $_homeserver/_matrix/client/versions',
+      );
+    }
 
-    await client.login(
-      'nl.voys.single_user',
-      token: accessToken,
-      identifier: AuthenticationUserIdentifier(user: 'test user'),
-    );
+    try {
+      await client.login(
+        'nl.voys.single_user',
+        token: accessToken,
+        identifier: AuthenticationUserIdentifier(user: 'test user'),
+      );
+    } on MatrixException catch (e) {
+      throw Exception(
+        'Login to $_homeserver failed (${e.errcode}: ${e.errorMessage}).',
+      );
+    }
 
     slidingSync = SlidingSync.builder(client: client)
         .addList(
@@ -100,9 +114,12 @@ void main() {
           ),
         )
         .build();
+
+    setUpCompleted = true;
   });
 
   tearDownAll(() async {
+    if (!setUpCompleted) return;
     await slidingSync.dispose();
     await client.logout();
   });
@@ -313,8 +330,7 @@ void main() {
   );
 
   test('subscribeToRooms sends room IDs in sync request body', () async {
-    const subscribedRoomId =
-        '!subscription-test-room:matrix.eu-production.holodeck.voys.nl';
+    final subscribedRoomId = '!subscription-test-room:${_homeserver.host}';
 
     slidingSync.subscribeToRooms({
       subscribedRoomId: RoomSubscription(

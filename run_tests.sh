@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# TODO fix tests https://voipgrid.atlassian.net/browse/MCONV-1150
-exit
-
 TOKEN=""
 
 while [[ $# -gt 0 ]]; do
