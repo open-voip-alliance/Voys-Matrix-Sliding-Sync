@@ -1,15 +1,77 @@
 // ignore_for_file: library_private_types_in_public_api
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 import 'package:sqflite/sqflite.dart' as sqlite;
 import 'package:voys_matrix_sliding_sync/voys_matrix_sliding_sync.dart';
 import 'package:voys_matrix_sliding_sync_example/logging_http_client.dart';
+
+enum _HolodeckEnvironment {
+  production(
+    'Production',
+    holodeckUrl: 'https://api.eu-production.holodeck.voys.nl',
+  ),
+  staging('Staging', holodeckUrl: 'https://api.eu-staging.holodeck.voys.nl'),
+  local('Local', fixedHomeserverUrl: 'http://localhost:8008');
+
+  const _HolodeckEnvironment(
+    this.label, {
+    this.holodeckUrl,
+    this.fixedHomeserverUrl,
+  });
+
+  final String label;
+  final String? holodeckUrl;
+  final String? fixedHomeserverUrl;
+
+  String get displayUrl => holodeckUrl ?? fixedHomeserverUrl!;
+}
+
+/// Mirrors the production Voys conversations app's `MatrixShard` model --
+/// the per-user Synapse shard returned by Holodeck's `my-shard` endpoint.
+class _MatrixShard {
+  const _MatrixShard({required this.hostname, required this.scheme, this.port});
+
+  factory _MatrixShard.fromJson(Map<String, dynamic> json) => _MatrixShard(
+    hostname: json['hostname'] as String,
+    scheme: json['scheme'] as String,
+    port: json['port'] as int?,
+  );
+
+  final String hostname;
+  final String scheme;
+  final int? port;
+
+  Uri get homeserverUri => Uri(scheme: scheme, host: hostname, port: port);
+}
+
+/// Resolves the logged-in user's Synapse shard from Holodeck, matching
+/// `ChatRepository.connect`'s `matrix-shard-api/my-shard` call in the
+/// production Voys conversations app -- the VG API token doubles as the
+/// bearer token for this request and as the `nl.voys.single_user` login token.
+Future<Uri> _fetchShardHomeserver(String vgToken, String holodeckUrl) async {
+  final response = await http.get(
+    Uri.parse('$holodeckUrl/matrix-shard-api/my-shard'),
+    headers: {'Authorization': 'Bearer $vgToken'},
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception(
+      'Failed to fetch Matrix shard (${response.statusCode}): ${response.body}',
+    );
+  }
+
+  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  final shard = json['shard'] as Map<String, dynamic>;
+  return _MatrixShard.fromJson(shard).homeserverUri;
+}
 
 Future<void> _loadEnv() async {
   final env = Platform.environment;
@@ -158,14 +220,15 @@ class LoginPage extends ConsumerStatefulWidget {
 
 class _LoginPageState extends ConsumerState<LoginPage> {
   // Store last entered values to persist across widget recreations
-  static String _lastHomeserver = 'https://matrix.org';
+  static String _lastHomeserverText =
+      _HolodeckEnvironment.production.displayUrl;
   static String _lastUsername = '';
   static String _lastPassword = '';
   static String _lastToken = '';
   static bool _lastUseTokenAuth = false;
 
   late final TextEditingController _homeserverTextField = TextEditingController(
-    text: _lastHomeserver,
+    text: _lastHomeserverText,
   );
   late final TextEditingController _usernameTextField = TextEditingController(
     text: _lastUsername,
@@ -180,6 +243,25 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _loading = false;
   late bool _useTokenAuth = _lastUseTokenAuth;
 
+  _HolodeckEnvironment? get _selectedEnvironment {
+    for (final environment in _HolodeckEnvironment.values) {
+      if (environment.displayUrl == _homeserverTextField.text) {
+        return environment;
+      }
+    }
+    return null;
+  }
+
+  void _setEnvironment(_HolodeckEnvironment environment) {
+    setState(() {
+      _homeserverTextField.text = environment.displayUrl;
+      // Default values:
+      // Production/staging resolve via VG token + shard lookup; local runs
+      // without Holodeck, so it only makes sense with password auth.
+      _useTokenAuth = environment != _HolodeckEnvironment.local;
+    });
+  }
+
   void _login() async {
     if (_loading) return;
 
@@ -189,15 +271,23 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     try {
       final client = await ref.read(clientProvider.future);
-      await client.checkHomeserver(Uri.parse(_homeserverTextField.text.trim()));
 
       if (_useTokenAuth) {
+        final token = _tokenTextField.text.trim();
+        final holodeckUrl = _selectedEnvironment?.holodeckUrl;
+        final homeserverUri = holodeckUrl != null
+            ? await _fetchShardHomeserver(token, holodeckUrl)
+            : Uri.parse(_homeserverTextField.text.trim());
+        await client.checkHomeserver(homeserverUri);
         await client.login(
           'nl.voys.single_user',
-          token: _tokenTextField.text.trim(),
+          token: token,
           identifier: AuthenticationUserIdentifier(user: 'a user'),
         );
       } else {
+        await client.checkHomeserver(
+          Uri.parse(_homeserverTextField.text.trim()),
+        );
         await client.login(
           LoginType.mLoginPassword,
           password: _passwordTextField.text,
@@ -256,7 +346,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   void _saveValues() {
-    _lastHomeserver = _homeserverTextField.text;
+    _lastHomeserverText = _homeserverTextField.text;
     _lastUsername = _usernameTextField.text;
     _lastPassword = _passwordTextField.text;
     _lastToken = _tokenTextField.text;
@@ -281,14 +371,33 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
+            SegmentedButton<_HolodeckEnvironment>(
+              showSelectedIcon: false,
+              emptySelectionAllowed: true,
+              segments: [
+                for (final environment in _HolodeckEnvironment.values)
+                  ButtonSegment(
+                    value: environment,
+                    label: Text(environment.label),
+                  ),
+              ],
+              selected: {?_selectedEnvironment},
+              onSelectionChanged: _loading
+                  ? null
+                  : (selection) => _setEnvironment(selection.first),
+            ),
+            const SizedBox(height: 16),
             TextField(
               controller: _homeserverTextField,
               readOnly: _loading,
               autocorrect: false,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
-                labelText: 'Homeserver',
+                labelText: 'Homeserver / holodeck url',
               ),
+              // Just to refresh the segmented button above -- typing away
+              // from a preset's URL should deselect it.
+              onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
             SwitchListTile(
@@ -296,20 +405,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               value: _useTokenAuth,
               onChanged: _loading
                   ? null
-                  : (value) {
-                      setState(() {
-                        _useTokenAuth = value;
-                        if (value) {
-                          _homeserverTextField.text =
-                              'https://matrix.eu-production.holodeck.voys.nl';
-                        } else {
-                          _homeserverTextField.text = 'https://matrix.org';
-                        }
-                      });
-                    },
+                  : (value) => setState(() => _useTokenAuth = value),
             ),
             const SizedBox(height: 16),
-            if (_useTokenAuth)
+            if (_useTokenAuth) ...[
               TextField(
                 controller: _tokenTextField,
                 readOnly: _loading,
@@ -319,8 +418,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   labelText: 'Token',
                 ),
                 onSubmitted: (_) => _login(),
-              )
-            else ...[
+              ),
+            ] else ...[
               TextField(
                 controller: _usernameTextField,
                 readOnly: _loading,
