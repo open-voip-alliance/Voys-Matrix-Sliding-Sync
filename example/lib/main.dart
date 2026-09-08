@@ -225,7 +225,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   static String _lastUsername = '';
   static String _lastPassword = '';
   static String _lastToken = '';
-  static bool _lastUseTokenAuth = false;
+  static bool? _lastUseTokenAuth;
 
   late final TextEditingController _homeserverTextField = TextEditingController(
     text: _lastHomeserverText,
@@ -241,7 +241,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   );
 
   bool _loading = false;
-  late bool _useTokenAuth = _lastUseTokenAuth;
+  // Falls back to the selected environment's default (see _setEnvironment)
+  // when there's no prior value to restore, so it stays consistent with
+  // _lastHomeserverText's initial value.
+  late bool _useTokenAuth =
+      _lastUseTokenAuth ?? _selectedEnvironment != _HolodeckEnvironment.local;
 
   _HolodeckEnvironment? get _selectedEnvironment {
     for (final environment in _HolodeckEnvironment.values) {
