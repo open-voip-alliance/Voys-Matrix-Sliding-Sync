@@ -6,6 +6,7 @@ import 'package:voys_matrix_sliding_sync/src/models/request.dart';
 import 'package:voys_matrix_sliding_sync/src/models/required_state.dart';
 import 'package:voys_matrix_sliding_sync/src/models/response.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
+import 'package:voys_matrix_sliding_sync/src/sliding_sync_only_client.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_update.dart';
 import 'package:voys_matrix_sliding_sync/src/sync_mode.dart';
 
@@ -17,7 +18,14 @@ class SlidingSync {
     required this.client,
     SlidingSyncExtensions? extensions,
     this.previewEventTypes,
-  }) : _extensions = extensions ?? SlidingSyncExtensions.essential();
+  }) : _extensions = extensions ?? SlidingSyncExtensions.essential() {
+    // Wake the poll loop after any write that could affect list membership
+    // or ordering, regardless of which call site triggered it.
+    final client = this.client;
+    if (client is SlidingSyncOnlyClient) {
+      client.onRoomMutation = wakeSyncLoop;
+    }
+  }
 
   /// The client instance
   final Client client;
