@@ -720,7 +720,6 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
         assignedToStateKey,
         {'assigned_to': username},
       );
-      _slidingSync?.wakeSyncLoop();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

@@ -25,6 +25,12 @@ class SlidingSyncOnlyClient extends Client {
     backgroundSync = false;
   }
 
+  /// Called after a write that could affect sliding sync list membership or
+  /// ordering (a state event or a room tag), regardless of which call site
+  /// triggered it. [SlidingSync] wires this to `wakeSyncLoop` so the change
+  /// is reflected on the next request instead of waiting out the poll delay.
+  void Function()? onRoomMutation;
+
   /// Override the public sync method to prevent any sync calls.
   ///
   /// Returns a minimal SyncUpdate to prevent the SDK from making actual sync requests
@@ -40,5 +46,39 @@ class SlidingSyncOnlyClient extends Client {
   }) async {
     // Return a minimal SyncUpdate to prevent sync without causing errors
     return SyncUpdate(nextBatch: since ?? prevBatch ?? '');
+  }
+
+  @override
+  Future<String> setRoomStateWithKey(
+    String roomId,
+    String eventType,
+    String stateKey,
+    Map<String, Object?> body,
+  ) async {
+    final eventId = await super.setRoomStateWithKey(
+      roomId,
+      eventType,
+      stateKey,
+      body,
+    );
+    onRoomMutation?.call();
+    return eventId;
+  }
+
+  @override
+  Future<void> setRoomTag(
+    String userId,
+    String roomId,
+    String tag,
+    Tag body,
+  ) async {
+    await super.setRoomTag(userId, roomId, tag, body);
+    onRoomMutation?.call();
+  }
+
+  @override
+  Future<void> deleteRoomTag(String userId, String roomId, String tag) async {
+    await super.deleteRoomTag(userId, roomId, tag);
+    onRoomMutation?.call();
   }
 }
