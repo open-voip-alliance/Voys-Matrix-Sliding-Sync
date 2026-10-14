@@ -267,14 +267,19 @@ class SlidingSync {
   /// Loads a specific room by ID, subscribing to it if not already initialized.
   ///
   /// If the room has already been initialized via sliding sync, returns it
-  /// immediately. Otherwise, adds a room subscription and waits for the server
-  /// to deliver the room data on the next sync cycle.
+  /// immediately. Otherwise, adds a room subscription and waits for the sync
+  /// cycle carrying it to complete. The server sends everything for a room
+  /// new to this connection, only the extra state or timeline for one it
+  /// already sent as part of a list, and nothing at all if [subscription]
+  /// asks for no more than the list did; in every case the room is in the
+  /// client once that cycle has been processed.
   ///
   /// [subscription] controls the timeline limit and required state requested
-  /// from the server. Defaults to a 20-event timeline.
+  /// from the server. Defaults to a 5-event timeline and minimal state.
   ///
-  /// Throws [TimeoutException] if data does not arrive within [timeout].
-  /// Throws [StateError] if the sync loop is not running.
+  /// Throws [TimeoutException] if the cycle does not complete within
+  /// [timeout]. Throws [StateError] if the sync loop is not running, or if
+  /// the server did not deliver the room.
   Future<Room> loadRoom(
     String roomId, {
     RoomSubscription? subscription,
@@ -289,6 +294,14 @@ class SlidingSync {
       throw StateError('Cannot load room: sync loop is not running');
     }
 
+    // The cycle to wait for is the first request sent after subscribing
+    // (subscribeToRooms wakes the loop), not one that may be mid-flight now.
+    var seenNewRequest = false;
+    final nextCycle = statusStream.firstWhere((status) {
+      if (status == SlidingSyncStatus.waitingForResponse) seenNewRequest = true;
+      return seenNewRequest && status == SlidingSyncStatus.finished;
+    });
+
     subscribeToRooms({
       roomId:
           subscription ??
@@ -298,14 +311,13 @@ class SlidingSync {
           ),
     });
 
-    await updateStream
-        .firstWhere((update) => update.rooms.containsKey(roomId))
-        .timeout(timeout);
+    await nextCycle.timeout(timeout);
 
     final room = client.getRoomById(roomId);
     if (room == null) {
       throw StateError('Room $roomId not found after subscription');
     }
+    _initializedRooms.add(roomId);
     return room;
   }
 
