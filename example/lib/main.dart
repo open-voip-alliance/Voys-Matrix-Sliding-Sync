@@ -89,6 +89,34 @@ const String assignedToStateKey = 'true';
 const String respondedEventType = 'co.voys.responded';
 const List<String> assignableUsers = ['foo', 'baz'];
 
+/// Events that may become a room's `lastEvent` and so decide its position in
+/// the recency-sorted room list. Mirrors the production Voys conversations
+/// app's `EventTypeCollections.previewed`, which in turn matches the event
+/// types the server bumps a room on when sorting the list. If the two sets
+/// drift apart, rooms arrive in a different order than they are displayed
+/// in, and paging in more rooms makes earlier ones jump around.
+const Set<String> previewedEventTypes = {
+  EventTypes.Message,
+  'co.voys.note',
+  assignedToEventType,
+  'co.voys.template_message',
+  'co.voys.call_info',
+  'co.voys.call_summary',
+  'co.voys.call_answered',
+  'co.voys.whatsapp_expiry_warning',
+};
+
+/// Room-list preview labels for previewable custom events that carry no
+/// `body`, so they don't render as 'Unknown message format of type ...'.
+const Map<String, String> customEventPreviews = {
+  'co.voys.note': 'Note',
+  'co.voys.template_message': 'Template message',
+  'co.voys.call_info': 'Call',
+  'co.voys.call_summary': 'Call summary',
+  'co.voys.call_answered': 'Call answered',
+  'co.voys.whatsapp_expiry_warning': 'WhatsApp window expiring',
+};
+
 String? getAssignedTo(Room room) =>
     room
             .getState(assignedToEventType, assignedToStateKey)
@@ -98,11 +126,10 @@ String? getAssignedTo(Room room) =>
 Set<String> getResponded(Room room) =>
     room.states[respondedEventType]?.keys.toSet() ?? const {};
 
-/// Preview text for the room list's last-message line. `co.voys.assigned_to`
-/// is included in the sliding sync preview event types (see `_initSync`) so
-/// reassignment-only rooms still sort by recency, but it has no `body` field,
-/// so the SDK's generic `Event.body` would otherwise show
-/// 'Unknown message format of type "co.voys.assigned_to"'.
+/// Preview text for the room list's last-message line. Any event in
+/// [previewedEventTypes] can be the `lastEvent`; the custom ones have no
+/// `body` field, so the SDK's generic `Event.body` would otherwise show
+/// 'Unknown message format of type "co.voys...."'.
 String lastEventPreview(Event? event) {
   if (event == null) return 'No messages';
   if (event.type == assignedToEventType) {
@@ -111,7 +138,9 @@ String lastEventPreview(Event? event) {
         ? 'Room unassigned'
         : 'Room assigned to $assignedTo';
   }
-  return event.body;
+  final body = event.content['body'];
+  if (body is String && body.isNotEmpty) return body;
+  return customEventPreviews[event.type] ?? event.body;
 }
 
 /// Builds the server-side filter for the room list's `assigned_to`/`responded`/
@@ -169,6 +198,13 @@ final clientProvider = FutureProvider((_) async {
     ),
     enableDehydratedDevices: false,
     httpClient: createLoggingHttpClient(),
+    // Same set as the sliding sync preview types (see `previewedEventTypes`),
+    // as in the production Voys conversations app. The SDK's `handleSync`
+    // picks and persists a room's `lastEvent` from this set, so if it
+    // differs from the sliding sync preview types the stored `lastEvent`
+    // (used for sorting after a restart) is not the one shown before it.
+    // Must be a mutable copy: the SDK adds its own defaults to this set.
+    roomPreviewLastEvents: previewedEventTypes.toSet(),
   );
 
   // Disable background sync to prevent sync loop
@@ -182,11 +218,11 @@ final clientProvider = FutureProvider((_) async {
     (a, b) => b.latestEventReceivedTime.compareTo(a.latestEventReceivedTime),
   );
 
-  // Initialize - our custom client will intercept any sync() calls and return empty responses
-  await client.init(
-    waitForFirstSync: false,
-    waitUntilLoadCompletedLoaded: false,
-  );
+  // Initialize - our custom client will intercept any sync() calls and return
+  // empty responses. Wait for the rooms to load from the database (as the
+  // production Voys conversations app does) so sliding sync finds them, with
+  // their stored `lastEvent`, instead of creating empty placeholders.
+  await client.init(waitForFirstSync: false);
 
   return client;
 });
@@ -554,22 +590,17 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
 
       _slidingSync = SlidingSync.builder(client: client)
           .withExtensions(SlidingSyncExtensions.all())
-          // A room whose only activity is state changes (e.g. reassignment,
-          // with no chat messages ever sent) has no event in the SDK's
-          // default previewable set, so it never gets a `lastEvent` and
-          // sorts to the bottom regardless of how recently it was touched.
-          // Matches the production Voys conversations app's preview types.
-          .withPreviewEventTypes({
-            ...client.roomPreviewLastEvents,
-            assignedToEventType,
-          })
+          // Same preview types as the production Voys conversations app, so
+          // the client-side recency sort agrees with the server's list order
+          // (see `previewedEventTypes`).
+          .withPreviewEventTypes(previewedEventTypes)
           .addList(
             SlidingSyncList(
               syncMode: SyncMode.growing,
               // Fetch enough events per room that a previewable event is
-              // almost always in-window, matching the production Voys
-              // conversations app's list timeline_limit.
-              timelineLimit: 10,
+              // almost always in-window. Same as the production Voys
+              // conversations app's `Config.roomListTimelineLimit`.
+              timelineLimit: 25,
               requiredState: RequiredStateRequest(
                 include: [
                   ['m.room.name', ''],
@@ -578,8 +609,10 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                   [respondedEventType, '*'],
                 ],
               ),
-              // Use 1 to see the rooms loading one-by-one in action.
-              batchSize: 10,
+              // Same as the production Voys conversations app's
+              // `Config.roomBatchSize`. Use 1 to see the rooms loading
+              // one-by-one in action.
+              batchSize: 50,
             ),
           )
           .build();

@@ -11,6 +11,9 @@ class RequiredStateRequest {
     return RequiredStateRequest(
       include: [
         ['m.room.member', r'$LAZY'], // Lazy-load members
+        // $LAZY only covers timeline senders; the SDK needs our own member
+        // (e.g. push rule evaluation) and fetches it per room otherwise.
+        ['m.room.member', r'$ME'],
         ['m.room.name', ''],
         ['m.room.avatar', ''],
         ['m.room.topic', ''],
@@ -25,6 +28,7 @@ class RequiredStateRequest {
     return RequiredStateRequest(
       include: [
         ['m.room.member', r'$LAZY'],
+        ['m.room.member', r'$ME'],
         ['m.room.name', ''],
         ['m.room.avatar', ''],
         ['m.room.topic', ''],
@@ -47,6 +51,7 @@ class RequiredStateRequest {
   /// Special values:
   /// - "*" as state_key means all state keys for that event type
   /// - "$LAZY" for m.room.member means lazy-load member events
+  /// - "$ME" as state_key means the current user's id
   ///
   /// Note: The server (Synapse MSC4186 implementation) expects a plain list
   /// format rather than the object format described in the MSC4186 spec draft.

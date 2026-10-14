@@ -28,11 +28,11 @@ if [[ "$CI" == "true" ]]; then
   export PATH="$PATH:$HOME/.pub-cache/bin"
 
   ACCESS_TOKEN="$TOKEN" \
-    dart test test/tests.dart --reporter json | \
+    dart test test/sync_loop_test.dart test/tests.dart --reporter json | \
     tojunit | \
     sed 's/&#x1[Bb];\[[0-9;]*[a-zA-Z]//g; s/&#x1[Bb];//g' > test-results.xml
 
   exit "${PIPESTATUS[0]}"
 else
-  ACCESS_TOKEN="$TOKEN" dart test test/tests.dart
+  ACCESS_TOKEN="$TOKEN" dart test test/sync_loop_test.dart test/tests.dart
 fi

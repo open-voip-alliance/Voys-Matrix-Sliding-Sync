@@ -80,3 +80,7 @@ This library is a wrapper - always prefer Matrix SDK methods over custom impleme
 - `_emittedEventIds` set prevents duplicate event processing
 - `_initializedRooms` set tracks which rooms have been seen to handle repeated `initial=true` flags
 - Position token changes on every response even without content changes - always save after processing
+- `pos` and `timeout` are query parameters, never body fields: Synapse ignores them in the body, which silently turns every request into an initial sync that returns immediately
+- Incremental requests long-poll (30s); `wakeSyncLoop()` and `stopSync()` abort the in-flight request (`http.AbortableRequest`) and the loop re-sends with the same `pos`
+- The first request after `wakeSyncLoop()` is sent without `timeout`: Synapse only answers a long-poll early for room/extension updates, never for list changes, so a filter/range change whose rooms were already sent would otherwise wait the full 30s
+- Unread counts come as top-level `notification_count`/`highlight_count` and are persisted via `storeRoomUpdate`; the server only re-sends them with new activity in the room, so `SlidingSyncOnlyClient` reports read receipts and `SlidingSync._markRoomRead` clears the counts optimistically, emits a room update and polls

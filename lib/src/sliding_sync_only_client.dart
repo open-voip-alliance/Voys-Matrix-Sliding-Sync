@@ -26,10 +26,17 @@ class SlidingSyncOnlyClient extends Client {
   }
 
   /// Called after a write that could affect sliding sync list membership or
-  /// ordering (a state event or a room tag), regardless of which call site
-  /// triggered it. [SlidingSync] wires this to `wakeSyncLoop` so the change
-  /// is reflected on the next request instead of waiting out the poll delay.
+  /// ordering (a state event, a room tag or a read receipt), regardless of
+  /// which call site triggered it. [SlidingSync] wires this to `wakeSyncLoop`
+  /// so the change is reflected on the next request instead of waiting out
+  /// the long-poll.
   void Function()? onRoomMutation;
+
+  /// Called after a read receipt (`m.read` / `m.read.private`) for [roomId]
+  /// was accepted by the server. [SlidingSync] wires this to clear the
+  /// room's unread counts locally and poll, since the server only re-sends
+  /// a room's counts along with new activity in that room.
+  Future<void> Function(String roomId)? onReadReceipt;
 
   /// Override the public sync method to prevent any sync calls.
   ///
@@ -46,6 +53,15 @@ class SlidingSyncOnlyClient extends Client {
   }) async {
     // Return a minimal SyncUpdate to prevent sync without causing errors
     return SyncUpdate(nextBatch: since ?? prevBatch ?? '');
+  }
+
+  /// [Client.clear] (run on logout) re-enables the background sync loop. With
+  /// [sync] returning immediately that loop would spin without pause after the
+  /// next login, so switch it back off.
+  @override
+  Future<void> clear() async {
+    await super.clear();
+    backgroundSync = false;
   }
 
   @override
@@ -80,5 +96,51 @@ class SlidingSyncOnlyClient extends Client {
   Future<void> deleteRoomTag(String userId, String roomId, String tag) async {
     await super.deleteRoomTag(userId, roomId, tag);
     onRoomMutation?.call();
+  }
+
+  // Read receipts change the server-side `unread` list filter, which Synapse
+  // never answers a long-poll early for (it only does so for room data), so
+  // poll right after sending one. A fully-read marker on its own does not
+  // affect unread counts, so it only wakes the loop.
+
+  @override
+  Future<void> setReadMarker(
+    String roomId, {
+    String? mFullyRead,
+    String? mRead,
+    String? mReadPrivate,
+  }) async {
+    await super.setReadMarker(
+      roomId,
+      mFullyRead: mFullyRead,
+      mRead: mRead,
+      mReadPrivate: mReadPrivate,
+    );
+    await _afterReceipt(roomId, isRead: mRead != null || mReadPrivate != null);
+  }
+
+  @override
+  Future<void> postReceipt(
+    String roomId,
+    ReceiptType receiptType,
+    String eventId, {
+    String? threadId,
+  }) async {
+    await super.postReceipt(roomId, receiptType, eventId, threadId: threadId);
+    await _afterReceipt(
+      roomId,
+      isRead:
+          receiptType == ReceiptType.mRead ||
+          receiptType == ReceiptType.mReadPrivate,
+    );
+  }
+
+  Future<void> _afterReceipt(String roomId, {required bool isRead}) async {
+    final onReadReceipt = this.onReadReceipt;
+    if (isRead && onReadReceipt != null) {
+      await onReadReceipt(roomId);
+    } else {
+      onRoomMutation?.call();
+    }
   }
 }
