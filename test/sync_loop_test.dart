@@ -50,6 +50,10 @@ class _FakeServer extends http.BaseClient {
   /// How many of the next sliding sync requests fail with a 500.
   var failNextRequests = 0;
 
+  /// Room payloads returned (once) when a request subscribes to their ID,
+  /// like a server delivering a room new to the connection.
+  Map<String, Object?> subscriptionRooms = {};
+
   /// Waits until at least [count] sliding sync requests have arrived.
   Future<void> waitForRequests(int count) async {
     while (requests.length < count) {
@@ -101,6 +105,13 @@ class _FakeServer extends http.BaseClient {
 
     final isInitial = !seen.query.containsKey('pos');
     final listRoomIds = isInitial ? initialListRoomIds : null;
+    final subscribed =
+        (body['room_subscriptions'] as Map<String, dynamic>?)?.keys ??
+        const <String>[];
+    final deliveredSubscriptions = {
+      for (final id in subscribed)
+        if (subscriptionRooms.containsKey(id)) id: subscriptionRooms.remove(id),
+    };
     final response = jsonEncode({
       'pos': 'pos${++_posCounter}',
       'lists': {
@@ -116,7 +127,7 @@ class _FakeServer extends http.BaseClient {
           ],
         },
       },
-      'rooms': isInitial ? initialRooms : <String, Object>{},
+      'rooms': {...deliveredSubscriptions, if (isInitial) ...initialRooms},
       'extensions': <String, Object>{},
     });
     return http.StreamedResponse(
@@ -629,6 +640,76 @@ void main() {
     await subscription.cancel();
 
     expect(processed, ['!listed:x', '!sub:x']);
+  });
+
+  test('loadRoom returns a room the server has nothing new for', () async {
+    await setUpWith();
+    const roomId = '!listed:fakeserver.notexisting';
+    // Delivered without `initial`, as after a restart: the room is in the
+    // client but was never marked initial on this connection, so loadRoom
+    // has to go through the server.
+    server.initialRooms = {
+      roomId: {
+        'name': 'Listed',
+        'joined_count': 1,
+        'required_state': <Object>[],
+        'timeline': [
+          {
+            'type': EventTypes.Message,
+            'event_id': r'$msg',
+            'sender': '@test:fakeserver.notexisting',
+            'origin_server_ts': 1,
+            'room_id': roomId,
+            'content': {'body': 'hi'},
+          },
+        ],
+      },
+    };
+    unawaited(slidingSync.startSync());
+    await server.waitForRequests(2);
+    final room = client.getRoomById(roomId)!;
+
+    // The subscription asks for no more than the list delivered, so the
+    // server's answer carries no room data at all.
+    final loaded = await slidingSync
+        .loadRoom(roomId)
+        .timeout(const Duration(seconds: 5));
+
+    expect(loaded, same(room));
+    expect(server.requests[2].body['room_subscriptions'], contains(roomId));
+  });
+
+  test('loadRoom waits for a room new to the connection', () async {
+    await setUpWith();
+    unawaited(slidingSync.startSync());
+    await server.waitForRequests(2);
+    const roomId = '!fresh:fakeserver.notexisting';
+    server.subscriptionRooms = {
+      roomId: {
+        'name': 'Fresh',
+        'initial': true,
+        'joined_count': 1,
+        'required_state': <Object>[],
+        'timeline': <Object>[],
+      },
+    };
+
+    final loaded = await slidingSync
+        .loadRoom(roomId)
+        .timeout(const Duration(seconds: 5));
+
+    expect(loaded.id, roomId);
+    expect(loaded.name, 'Fresh');
+
+    // Known now, so the next load needs no round trip: the long-poll that
+    // follows the delivering cycle is left alone.
+    await server.waitForRequests(4);
+    final longPoll = server.requests[3];
+    expect(longPoll.query, contains('timeout'));
+    expect(await slidingSync.loadRoom(roomId), same(loaded));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(longPoll.aborted, isFalse);
+    expect(server.requests, hasLength(4));
   });
 
   test('stopSync returns promptly while the server is long-polling', () async {
