@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:matrix/matrix.dart';
 import 'package:voys_matrix_sliding_sync/src/api_extensions.dart';
@@ -18,12 +19,15 @@ class SlidingSync {
     required this.client,
     SlidingSyncExtensions? extensions,
     this.previewEventTypes,
+    this.pollTimeout = const Duration(seconds: 30),
   }) : _extensions = extensions ?? SlidingSyncExtensions.essential() {
     // Wake the poll loop after any write that could affect list membership
     // or ordering, regardless of which call site triggered it.
     final client = this.client;
     if (client is SlidingSyncOnlyClient) {
-      client.onRoomMutation = wakeSyncLoop;
+      client
+        ..onRoomMutation = wakeSyncLoop
+        ..onReadReceipt = _markRoomRead;
     }
   }
 
@@ -32,7 +36,25 @@ class SlidingSync {
 
   final Set<String>? previewEventTypes;
 
-  static const int _pollTimeout = 30000;
+  /// How long the server may hold an incremental request waiting for new
+  /// data (the `timeout` query parameter).
+  final Duration pollTimeout;
+
+  /// How long to wait for a long-poll before abandoning it. The server
+  /// answers within [pollTimeout], so well past that the connection was most
+  /// likely dropped silently (e.g. a NAT timeout while the app was in the
+  /// background), which never surfaces as an error on its own.
+  Duration get _pollDeadline => pollTimeout + pollTimeout ~/ 3;
+
+  /// The per-list state cached by the previous session, kept so a list
+  /// registered after startup via [addList] is preloaded from it too.
+  Map<String, dynamic>? _cachedListsState;
+
+  /// Back-off after a failed request.
+  static const _errorBackOff = Duration(seconds: 3);
+
+  /// See the busy-loop guard in [_syncLoop].
+  static const _busyLoopGuard = Duration(seconds: 1);
 
   /// Current position token
   String? _pos;
@@ -84,10 +106,21 @@ class SlidingSync {
   /// To-device batch token — echoed back to the server as `extensions.to_device.since`
   String? _toDeviceSince;
 
-  /// Completer used to cut short the busy-loop-avoidance delay in [_syncLoop]
-  /// (see the comment there) via [wakeSyncLoop]. Reset at the top of every
-  /// loop iteration.
+  /// Completed by [wakeSyncLoop] to abandon the in-flight long-poll or cut a
+  /// back-off short (see [_syncLoop]). Reset at the top of every loop
+  /// iteration.
   Completer<void> _wakeSignal = Completer<void>();
+
+  /// Set by [wakeSyncLoop] and consumed by the next request, which is then
+  /// sent without a `timeout` so the server answers at once.
+  ///
+  /// Synapse only returns a long-poll early for new room data or extension
+  /// updates, never for list changes (`SlidingSyncResult.__bool__` ignores
+  /// `lists`). A request built after a config change (filter, ranges,
+  /// subscription) whose rooms were all sent on this connection before would
+  /// otherwise be held for the full [pollTimeout]. Same idea as the Rust
+  /// SDK's `PollTimeout::None` while its lists are loading.
+  bool _wantImmediateResponse = true;
 
   /// Creates a builder for configuring sliding sync
   static SlidingSyncBuilder builder({required Client client}) {
@@ -124,6 +157,23 @@ class SlidingSync {
     _lists[list.name] = list;
   }
 
+  /// Registers [list] after [SlidingSyncBuilder.build], typically while
+  /// syncing, replacing any list with the same name. The next request
+  /// includes it; if the previous session cached its rooms they are shown
+  /// right away, as for lists registered up front.
+  ///
+  /// Lets an app request the list behind its visible tab first and the rest
+  /// once that has arrived, instead of waiting for one response that carries
+  /// them all.
+  void addList(SlidingSyncList list) {
+    _addList(list);
+    final cached = _cachedListsState?[list.name];
+    if (cached is Map) {
+      _preloadList(list, cached.cast<String, dynamic>());
+    }
+    wakeSyncLoop();
+  }
+
   /// Subscribes to specific rooms
   void subscribeToRooms(Map<String, RoomSubscription> subscriptions) {
     _activeRoomSubscriptions.addAll(subscriptions);
@@ -145,15 +195,72 @@ class SlidingSync {
     wakeSyncLoop();
   }
 
-  /// Wakes the sync loop immediately if it's currently sleeping between polls
-  /// (the busy-loop-avoidance delay in [_syncLoop]), so the next request goes
-  /// out right away instead of waiting out that delay. [SlidingSyncList]'s
+  /// Wakes the sync loop so the next request goes out right away, built from
+  /// the current configuration and answered by the server immediately rather
+  /// than long-polled. If the server is holding our request as a long-poll,
+  /// that request is abandoned (and aborted, where the client's `httpClient`
+  /// supports it) and re-sent with the same `pos`; if the loop is backing
+  /// off after an error, the back-off is cut short. [SlidingSyncList]'s
   /// config setters already call this themselves via `onConfigChanged`; this
   /// is exposed for other cases where a caller wants to force an immediate
   /// poll (e.g. a pull-to-refresh gesture).
   void wakeSyncLoop() {
+    _wantImmediateResponse = true;
     if (!_wakeSignal.isCompleted) {
       _wakeSignal.complete();
+    }
+  }
+
+  /// Clears [roomId]'s unread counts after the user sent a read receipt for
+  /// it, persists that, emits a room update so UIs drop the badge, and polls
+  /// so `unread`-filtered lists catch up.
+  ///
+  /// Optimistic: the server only re-sends a room (and so its counts) along
+  /// with new events or state in it, so without this a badge would stay
+  /// until the room's next activity. The server's counts win whenever the
+  /// room is next sent down.
+  Future<void> _markRoomRead(String roomId) async {
+    wakeSyncLoop();
+
+    final room = client.getRoomById(roomId);
+    if (room == null ||
+        (room.notificationCount == 0 && room.highlightCount == 0)) {
+      return;
+    }
+
+    room
+      ..notificationCount = 0
+      ..highlightCount = 0;
+    _notificationCounts[roomId] = 0;
+    _highlightCounts[roomId] = 0;
+    await client.database.storeRoomUpdate(
+      roomId,
+      JoinedRoomUpdate(
+        unreadNotifications: UnreadNotificationCounts(
+          notificationCount: 0,
+          highlightCount: 0,
+        ),
+      ),
+      room.lastEvent,
+      client,
+    );
+
+    if (!_updateController.isClosed) {
+      _updateController.add(
+        SlidingSyncUpdate(
+          pos: _pos ?? '',
+          lists: {},
+          rooms: {
+            roomId: SlidingSyncRoomUpdate(
+              roomId: roomId,
+              roomData: SlidingSyncRoomData(
+                notificationCount: 0,
+                highlightCount: 0,
+              ),
+            ),
+          },
+        ),
+      );
     }
   }
 
@@ -211,6 +318,8 @@ class SlidingSync {
     Logs().i('[SlidingSync] Starting sync loop (id: $_connId)');
     _isSyncing = true;
     _stopCompleter = null;
+    // Resuming from a cached position should show what changed right away.
+    _wantImmediateResponse = true;
 
     try {
       // Load cached position if available
@@ -228,18 +337,18 @@ class SlidingSync {
           allRoomIds.addAll(list.roomIds.where((id) => id.isNotEmpty));
         }
 
-        // Create placeholder room objects so UI can render them immediately
-        // Set lastEvent to null explicitly to show "No messages" instead of "Refreshing..."
+        // Make sure every cached room is in `client.rooms` so the UI can
+        // render it immediately. Prefer the stored room, which carries the
+        // `lastEvent` the list is sorted on; fall back to an empty room with
+        // a null lastEvent, which shows "No messages" rather than the SDK's
+        // "Refreshing..." placeholder.
         for (final roomId in allRoomIds) {
           var room = client.getRoomById(roomId);
           if (room == null) {
-            // Create room object with null lastEvent
-            room = Room(id: roomId, client: client)
-              ..lastEvent =
-                  null; // Explicitly null to prevent "Refreshing..." placeholder
+            room =
+                await client.database.getSingleRoom(client, roomId) ??
+                (Room(id: roomId, client: client)..lastEvent = null);
             client.rooms.add(room);
-            // Load room state from database
-            await client.database.getSingleRoom(client, roomId);
           }
 
           // Restore latest event ID to prevent re-processing events after restart
@@ -288,6 +397,9 @@ class SlidingSync {
 
     Logs().i('[SlidingSync] Stopping sync loop (id: $_connId)');
     _stopCompleter = Completer<void>();
+    // Abandon an in-flight long-poll (or cut a back-off short) so the loop
+    // notices the stop now rather than after up to [pollTimeout].
+    wakeSyncLoop();
     await _stopCompleter!.future;
     _stopCompleter = null;
     _hasEmittedFirstUpdate = false;
@@ -303,10 +415,15 @@ class SlidingSync {
     }
   }
 
-  /// The main sync loop
+  /// The main sync loop.
+  ///
+  /// Each iteration sends one request. An initial request (no `pos`) returns
+  /// as soon as the server has built the response; an incremental one is
+  /// held by the server for up to [pollTimeout] until something changes, so
+  /// there is no client-side polling interval. [wakeSyncLoop] abandons the
+  /// held request so a config change goes out immediately, and that next
+  /// request is answered immediately too (see [_wantImmediateResponse]).
   Future<void> _syncLoop() async {
-    var lastRequestTime = DateTime.now();
-
     while (_isSyncing && _stopCompleter == null) {
       _wakeSignal = Completer<void>();
       try {
@@ -314,15 +431,19 @@ class SlidingSync {
         final requestGenerations = {
           for (final entry in _lists.entries) entry.key: entry.value.generation,
         };
-        final response = await client.slidingSync(_buildRequest().toJson());
+        final longPoll = _pos != null && !_wantImmediateResponse;
+        _wantImmediateResponse = false;
+        final requestStart = DateTime.now();
+        final response = await _sendRequest(longPoll: longPoll);
+        if (response == null) {
+          // Woken or stopped while the server was long-polling: the request
+          // was abandoned. Go round again to send a fresh one built from the
+          // current config (or exit if a stop was requested).
+          continue;
+        }
         _updateStatus(SlidingSyncStatus.processing);
-        final update = await _processResponse(
-          SlidingSyncResponse.fromJson(response),
-          requestGenerations,
-        );
+        final update = await _processResponse(response, requestGenerations);
         _updateStatus(SlidingSyncStatus.finished);
-
-        final requestDuration = DateTime.now().difference(lastRequestTime);
 
         // Only emit update if something actually changed, or if this is the first update
         final hasListChanges = update.lists.values.any(
@@ -338,29 +459,13 @@ class SlidingSync {
           _hasEmittedFirstUpdate = true;
         }
 
-        // Workaround: Server ignores timeout parameter and responds immediately
-        // Add delay when request completes too fast and there are no changes
-        // This prevents busy loop while maintaining responsiveness for new messages.
-        // wakeSyncLoop() cuts this short for callers that need the next
-        // request to go out immediately (e.g. after changing list filters).
-        if (requestDuration.inMilliseconds < 5000 && !hasChanges) {
-          const targetInterval =
-              3000; // Target 3 second interval between requests
-          final delayMs = targetInterval - requestDuration.inMilliseconds;
-          if (delayMs > 0) {
-            await Future.any([
-              Future.delayed(Duration(milliseconds: delayMs)),
-              _wakeSignal.future,
-            ]);
-          }
-        }
-
-        lastRequestTime = DateTime.now();
-
-        // Check for stop signal
-        if (_stopCompleter != null) {
-          _stopCompleter!.complete();
-          break;
+        // Busy-loop guard: a long-poll with nothing new should have been held
+        // by the server for up to [pollTimeout]. If it came straight back
+        // anyway, pause briefly so a server that doesn't honour `timeout`
+        // can't make us spin. Never hit with Synapse.
+        final elapsed = DateTime.now().difference(requestStart);
+        if (longPoll && !hasChanges && elapsed < _busyLoopGuard) {
+          await _pause(_busyLoopGuard - elapsed);
         }
       } on MatrixException catch (e) {
         _updateStatus(SlidingSyncStatus.error);
@@ -374,18 +479,95 @@ class SlidingSync {
         }
 
         // For other Matrix errors, wait before retrying
-        await Future.delayed(const Duration(seconds: 3));
+        await _retryAfterError();
       } catch (e, stackTrace) {
         _updateStatus(SlidingSyncStatus.error);
         Logs().e('[SlidingSync] Error in sync loop: $e');
         Logs().e('[SlidingSync] Stack trace: $stackTrace');
         // For network errors, wait before retrying
-        await Future.delayed(const Duration(seconds: 3));
+        await _retryAfterError();
       }
+    }
+
+    // Acknowledge a pending stopSync(). Done after the loop rather than
+    // inside it so a stop requested before the first iteration, or while a
+    // request was being abandoned, is still acknowledged.
+    _stopCompleter?.complete();
+  }
+
+  /// Sends one sync request and returns the parsed response, or `null` if
+  /// the request was abandoned because [wakeSyncLoop] (or [stopSync]) fired
+  /// while the server was long-polling.
+  ///
+  /// With [longPoll] the server may hold the request for up to
+  /// [pollTimeout]; without it the request carries no `timeout` and the
+  /// server answers at once (also the case for an initial sync, which
+  /// returns as soon as the server has built the response regardless).
+  Future<SlidingSyncResponse?> _sendRequest({required bool longPoll}) async {
+    if (!longPoll) {
+      // An immediate request returns as soon as the server has built the
+      // (potentially large) response, so let it finish rather than throw
+      // that work away; the next request picks up any config change anyway.
+      return SlidingSyncResponse.fromJson(
+        await client.slidingSync(_buildRequest().toJson(), pos: _pos),
+      );
+    }
+
+    // A long-poll is abandoned when the loop is woken, or when the server
+    // has not answered by [_pollDeadline].
+    final abandon = Completer<void>();
+    void abandonNow() {
+      if (!abandon.isCompleted) abandon.complete();
+    }
+
+    unawaited(_wakeSignal.future.then((_) => abandonNow()));
+    final deadline = Timer(_pollDeadline, () {
+      Logs().w(
+        '[SlidingSync] No response within $_pollDeadline, abandoning the '
+        'long-poll',
+      );
+      abandonNow();
+    });
+
+    try {
+      final request = client.slidingSync(
+        _buildRequest().toJson(),
+        pos: _pos,
+        timeout: pollTimeout.inMilliseconds,
+        abortTrigger: abandon.future,
+      );
+      // Race the request against abandonment. With an `httpClient` that
+      // honours the abort trigger the request fails right after it; with one
+      // that doesn't (e.g. a wrapper that copies the request before sending)
+      // it keeps running and its eventual response is discarded here. Either
+      // way the loop moves on immediately. Re-sending with the same `pos` is
+      // safe: the server drops any newer connection position it handed out
+      // for the abandoned request.
+      final json = await Future.any<Map<String, Object?>?>([
+        request,
+        abandon.future.then((_) => null),
+      ]);
+      return json == null ? null : SlidingSyncResponse.fromJson(json);
+    } finally {
+      deadline.cancel();
     }
   }
 
-  /// Builds the sync request
+  /// Backs off after a failed request. The retry is answered immediately:
+  /// the failed request may have been the one carrying a config change
+  /// (which the server never answers a long-poll early for), and after an
+  /// outage an immediate answer shows what changed meanwhile right away.
+  Future<void> _retryAfterError() async {
+    _wantImmediateResponse = true;
+    await _pause(_errorBackOff);
+  }
+
+  /// Waits for [duration], or less if [wakeSyncLoop] fires first.
+  Future<void> _pause(Duration duration) =>
+      Future.any([Future<void>.delayed(duration), _wakeSignal.future]);
+
+  /// Builds the sync request body. `pos` and `timeout` are query parameters
+  /// and are passed to `slidingSync()` separately.
   SlidingSyncRequest _buildRequest() {
     if (_activeRoomSubscriptions.isNotEmpty) {
       Logs().d(
@@ -395,8 +577,6 @@ class SlidingSync {
 
     return SlidingSyncRequest(
       connId: _connId,
-      pos: _pos,
-      timeout: _pollTimeout,
       setPresence: client.syncPresence?.toString().split('.').last,
       lists: _lists,
       roomSubscriptions: _activeRoomSubscriptions.isNotEmpty
@@ -487,7 +667,7 @@ class SlidingSync {
       Logs().d(
         '[SlidingSync] Processing ${response.rooms!.length} rooms from response',
       );
-      for (final entry in response.rooms!.entries) {
+      for (final entry in _inListOrder(response.rooms!)) {
         final roomId = entry.key;
         final roomData = entry.value;
         Logs().d('[SlidingSync] Processing room: $roomId');
@@ -574,6 +754,42 @@ class SlidingSync {
       rooms: roomUpdates,
       extensions: response.extensions,
     );
+  }
+
+  /// Orders [rooms] as they appear in the lists (lowest position across the
+  /// lists first), with rooms that are in no list last, in response order.
+  ///
+  /// The server builds the room entries concurrently and emits them in
+  /// completion order, so the response order is arbitrary. Processing them
+  /// top of list first means a UI that shows rooms as they are added to the
+  /// client shows the right ones first.
+  List<MapEntry<String, SlidingSyncRoomData>> _inListOrder(
+    Map<String, SlidingSyncRoomData> rooms,
+  ) {
+    final positions = <String, int>{};
+    for (final list in _lists.values) {
+      final roomIds = list.roomIds;
+      for (var i = 0; i < roomIds.length; i++) {
+        final roomId = roomIds[i];
+        if (roomId.isEmpty || !rooms.containsKey(roomId)) continue;
+        final known = positions[roomId];
+        if (known == null || i < known) positions[roomId] = i;
+      }
+    }
+
+    // Rooms in no list (room subscriptions) sort after every listed room,
+    // whatever its list index.
+    final afterLists = positions.values.fold(-1, max) + 1;
+    int positionOf(String roomId) => positions[roomId] ?? afterLists;
+    // Indexed so the sort is stable for rooms with the same position.
+    final indexed = rooms.entries.toList().asMap().entries.toList()
+      ..sort((a, b) {
+        final byPosition = positionOf(
+          a.value.key,
+        ).compareTo(positionOf(b.value.key));
+        return byPosition != 0 ? byPosition : a.key.compareTo(b.key);
+      });
+    return [for (final entry in indexed) entry.value];
   }
 
   /// Updates a room with sliding sync data
@@ -770,7 +986,19 @@ class SlidingSync {
         if (data.invitedCount != null)
           'm.invited_member_count': data.invitedCount,
       }),
-      unreadNotifications: data.notificationCounts,
+      // Synapse sends the counts as top-level `notification_count` /
+      // `highlight_count`; `notification_counts` is the sliding sync proxy's
+      // spelling. Pass them on so storeRoomUpdate persists them and the
+      // badges survive a restart, which resumes from the cached `pos` and so
+      // only receives rooms that changed since.
+      unreadNotifications:
+          data.notificationCounts ??
+          (data.notificationCount != null || data.highlightCount != null
+              ? UnreadNotificationCounts(
+                  notificationCount: data.notificationCount,
+                  highlightCount: data.highlightCount,
+                )
+              : null),
     );
 
     // The room's lastEvent: the newest previewable event in this batch, or the
@@ -795,11 +1023,14 @@ class SlidingSync {
       client,
     );
 
-    // Only call handleSync if we have timeline events to process
-    // This prevents placeholder "Refreshing..." events from being created
-    if (data.timeline != null && data.timeline!.isNotEmpty) {
-      // Call handleSync to properly process events into room state
-      // This makes events available for getTimeline() to retrieve
+    // handleSync stores the timeline events (so getTimeline() can retrieve
+    // them) and the state events (so they survive a restart; the setState
+    // calls above are in memory only). Skip it when there is nothing to
+    // store. With `limited: false` and no timeline the SDK creates no
+    // "Refreshing..." placeholder lastEvent.
+    final hasTimeline = data.timeline?.isNotEmpty ?? false;
+    final hasState = data.requiredState?.isNotEmpty ?? false;
+    if (hasTimeline || hasState) {
       await client.handleSync(
         SyncUpdate(
           nextBatch: _pos ?? 'sliding_sync_initial',
@@ -808,10 +1039,22 @@ class SlidingSync {
       );
     }
 
-    // handleSync (above) may have set lastEvent to a non-previewable event;
-    // overwrite it with our previewable choice. If we don't have one, leave
-    // handleSync's value rather than nulling it.
-    room.lastEvent = lastEventToStore ?? room.lastEvent;
+    // handleSync (above) picks lastEvent from `client.roomPreviewLastEvents`
+    // and persists that pick, overwriting what we stored. Overwrite it with
+    // our previewable choice, in memory and in the database, so the order
+    // after a restart (sorted on the stored lastEvent) matches the order
+    // before it. If we don't have one, leave handleSync's value rather than
+    // nulling it.
+    if (lastEventToStore != null &&
+        room.lastEvent?.eventId != lastEventToStore.eventId) {
+      room.lastEvent = lastEventToStore;
+      await client.database.storeRoomUpdate(
+        roomId,
+        JoinedRoomUpdate(),
+        lastEventToStore,
+        client,
+      );
+    }
   }
 
   /// Processes extensions from the response
@@ -952,24 +1195,28 @@ class SlidingSync {
       if (cachedPosEvent.content['lists'] is Map) {
         final cachedLists =
             cachedPosEvent.content['lists']! as Map<String, dynamic>;
+        _cachedListsState = cachedLists;
         for (final entry in cachedLists.entries) {
           final list = _lists[entry.key];
           if (list != null && entry.value is Map) {
-            final listData = entry.value as Map<String, dynamic>;
-            final roomIds =
-                (listData['room_ids'] as List?)?.cast<String>() ?? [];
-            final totalCount = listData['total_count'] as int?;
-
-            if (roomIds.isNotEmpty) {
-              // Restore cached room IDs for immediate UI display, but don't
-              // restore ranges. Let the list start with its initial batch size
-              // to avoid requesting hundreds of rooms on the first sync after
-              // restart, which causes timeouts and slow loading.
-              list.markAsPreloaded(roomIds, totalCount);
-            }
+            _preloadList(list, entry.value as Map<String, dynamic>);
           }
         }
       }
+    }
+  }
+
+  /// Shows [list]'s rooms from the previous session's cache.
+  void _preloadList(SlidingSyncList list, Map<String, dynamic> listData) {
+    final roomIds = (listData['room_ids'] as List?)?.cast<String>() ?? [];
+    final totalCount = listData['total_count'] as int?;
+
+    if (roomIds.isNotEmpty) {
+      // Restore cached room IDs for immediate UI display, but don't
+      // restore ranges. Let the list start with its initial batch size
+      // to avoid requesting hundreds of rooms on the first sync after
+      // restart, which causes timeouts and slow loading.
+      list.markAsPreloaded(roomIds, totalCount);
     }
   }
 
@@ -1026,11 +1273,19 @@ class SlidingSyncBuilder {
 
   SlidingSyncExtensions? extensions;
   Set<String>? _previewEventTypes;
+  Duration _pollTimeout = const Duration(seconds: 30);
   final List<SlidingSyncList> _lists = [];
 
   /// Sets the extensions
   SlidingSyncBuilder withExtensions(SlidingSyncExtensions ext) {
     extensions = ext;
+    return this;
+  }
+
+  /// How long the server may hold a request waiting for new data. Defaults
+  /// to 30 seconds.
+  SlidingSyncBuilder withPollTimeout(Duration timeout) {
+    _pollTimeout = timeout;
     return this;
   }
 
@@ -1051,6 +1306,7 @@ class SlidingSyncBuilder {
       client: client,
       extensions: extensions,
       previewEventTypes: _previewEventTypes,
+      pollTimeout: _pollTimeout,
     );
 
     for (final list in _lists) {

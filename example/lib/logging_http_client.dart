@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_interceptor/http_interceptor.dart';
 import 'package:talker/talker.dart';
 import 'package:talker_http_logger/talker_http_logger.dart';
+import 'package:voys_matrix_sliding_sync/voys_matrix_sliding_sync.dart';
 
 final talker = Talker();
 
@@ -83,22 +84,29 @@ class _SensitiveDataMaskingInterceptor implements InterceptorContract {
 
 /// Creates an HTTP client with Talker logging.
 /// Set [enabled] to false to disable all HTTP logging.
+///
+/// Wrapped in [AbortPreservingClient] because `InterceptedClient` copies
+/// requests, which would drop the abort trigger sliding sync uses to cancel
+/// its long-poll when woken.
 http.Client createLoggingHttpClient({bool enabled = false}) {
-  return InterceptedClient.build(
-    interceptors: [
-      _SensitiveDataMaskingInterceptor(enabled: enabled),
-      TalkerHttpLogger(
-        talker: talker,
-        settings: TalkerHttpLoggerSettings(
-          enabled: enabled,
-          printRequestHeaders:
-              false, // handled by _SensitiveDataMaskingInterceptor
-          printResponseHeaders: false,
-          printRequestData:
-              false, // handled by _SensitiveDataMaskingInterceptor
-          printResponseData: false,
+  return AbortPreservingClient(
+    (inner) => InterceptedClient.build(
+      client: inner,
+      interceptors: [
+        _SensitiveDataMaskingInterceptor(enabled: enabled),
+        TalkerHttpLogger(
+          talker: talker,
+          settings: TalkerHttpLoggerSettings(
+            enabled: enabled,
+            printRequestHeaders:
+                false, // handled by _SensitiveDataMaskingInterceptor
+            printResponseHeaders: false,
+            printRequestData:
+                false, // handled by _SensitiveDataMaskingInterceptor
+            printResponseData: false,
+          ),
         ),
-      ),
-    ],
+      ],
+    ),
   );
 }

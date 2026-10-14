@@ -160,7 +160,10 @@ class SlidingSyncRoomData {
           : null,
       bumpStamp: json['bump_stamp'] as int?,
       initial: json['initial'] as bool?,
-      expandedTimeline: json['expanded_timeline'] as bool?,
+      // Synapse spells it `unstable_expanded_timeline`.
+      expandedTimeline:
+          (json['unstable_expanded_timeline'] ?? json['expanded_timeline'])
+              as bool?,
       numLive: json['num_live'] as int?,
       timeline: json['timeline'] != null
           ? (json['timeline'] as List<dynamic>)

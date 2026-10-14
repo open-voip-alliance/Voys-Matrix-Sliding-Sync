@@ -25,6 +25,7 @@
 /// ```
 library;
 
+export 'src/abort_preserving_client.dart' show AbortPreservingClient;
 export 'src/models/filters.dart' show SlidingRoomFilter;
 export 'src/models/request.dart' show RoomSubscription, SlidingSyncExtensions;
 export 'src/models/required_state.dart' show RequiredStateRequest;

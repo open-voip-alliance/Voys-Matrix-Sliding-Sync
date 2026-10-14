@@ -1,12 +1,14 @@
 import 'package:voys_matrix_sliding_sync/src/models/required_state.dart';
 import 'package:voys_matrix_sliding_sync/src/sliding_sync_list.dart';
 
-/// Request structure for sliding sync
+/// Request body for sliding sync.
+///
+/// The position token (`pos`) and long-poll `timeout` are deliberately not
+/// part of the body: the server reads them from the query string, see
+/// `SlidingSyncMatrixApiExtensions.slidingSync`.
 class SlidingSyncRequest {
   SlidingSyncRequest({
     this.connId,
-    this.pos,
-    this.timeout,
     this.setPresence,
     this.lists,
     this.roomSubscriptions,
@@ -16,12 +18,6 @@ class SlidingSyncRequest {
 
   /// Connection identifier (unique per client connection)
   final String? connId;
-
-  /// Position token from previous response
-  final String? pos;
-
-  /// Long-poll timeout in milliseconds
-  final int? timeout;
 
   /// Set presence status
   final String? setPresence;
@@ -42,9 +38,6 @@ class SlidingSyncRequest {
     final json = <String, dynamic>{};
 
     if (connId != null) json['conn_id'] = connId;
-    if (pos != null) json['pos'] = pos;
-    // MSC4186: timeout is in request body (only effective when pos is set)
-    if (timeout != null) json['timeout'] = timeout;
     if (setPresence != null) json['set_presence'] = setPresence;
     if (lists != null && lists!.isNotEmpty) {
       json['lists'] = lists!.map(
